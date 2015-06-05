@@ -592,6 +592,10 @@ class Player(GObject.GObject):
 
         self._validate_next_track()
 
+        # Send last.fm scrobble signal if boolean setting true and if duration more than 30s
+        if (self._settings.get_boolean('lastfm-scrobble') and self.duration > 30):
+            self.emit('lastfm-scrobble', {'track': title, 'artist': artist, 'album': album})
+
     def _on_next_item_validated(self, info, error, _iter):
         if error:
             print("Info %s: error: %s" % (info, error))
@@ -624,10 +628,6 @@ class Player(GObject.GObject):
             GLib.idle_add(self._validate_next_track)
 
         return False
-
-        # Send last.fm scrobble signal if boolean setting true and if duration more than 30s
-        if (self._settings.get_boolean('lastfm-scrobble') and self.duration > 30):
-            self.emit('lastfm-scrobble', {'track': title, 'artist': artist, 'album': album})
 
     @log
     def _on_cache_lookup(self, pixbuf, path, data=None):
