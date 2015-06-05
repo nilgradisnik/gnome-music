@@ -52,6 +52,10 @@
             <default>false</default>
             <summary>Last.fm scrobble</summary>
             <description>Enables or disabled scrobbling to last.fm</description>
+        <key type="b" name="replaygain">
+            <default>false</default>
+            <summary>Enable ReplayGain</summary>
+            <description>Enables or disables ReplayGain for albums</description>
         </key>
     </schema>
 </schemalist>

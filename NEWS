@@ -1,3 +1,135 @@
+Overview of changes in 3.16.0
+=============================
+
+Translations updated:
+ Basque language
+ Finnish  update
+ Fix a syntax error in desktop file keywords Bosnian
+ Indonesian
+ Tajik
+ Update Aragonese
+ Update Catalan
+
+
+Overview of changes in 3.15.92
+=============================
+
+* Bug fix release
+
+Bugs fixed:
+ 744657 Loading in-app notification gets stuck
+ 745646 Improve sorting of "songs" view
+ 745647 shuffleHistory fixes
+ 745648 Song view elements jump around
+ 745650 Not Enough Space Given For Track Titles in Album View
+
+Translations updated:
+ Added Bosnian
+ Danish
+ German
+ Korean
+ Polish
+ Serbian
+ Slovenian
+ Swedish
+ Turkish
+ l10n: Update Japanese
+
+
+Overview of changes in 3.15.91
+=============================
+
+* Bug fix release
+
+Bugs fixed:
+ 705852 Now playing indicator is lost on switching views / artists / artist albums
+ 729377 Convert menu of gear button in the Playlists view into a popover
+ 729525 Show a loading animation when Add to Playlist is clicked in Albums and Artists view
+ 743310 Updates to Smart Playlist functionality in 3.15.4
+ 743883 Refresh Playlists/Songs view when star toggled
+ 743884 Protect smart playlists
+ 743901 Favorite Playlist and Starring implementation
+ 744005 stars in Album/Artist/Search views
+ 744655 Loading in-app notification is malformed
+ 744807 Last song on album view keeps repeating in "mix/no repeat" mode
+ 744832 Undo playlist delete --> reinsert at previous position
+
+Translations updated:
+ Basque language
+ Brazilian Portuguese
+ Chinese (Taiwan)
+ Czech
+ Fix German desktop file keyword
+ French
+ Galician s
+ Greek
+ Hebrew
+ Hungarian
+ Italian
+ Kazakh
+ Lithuanian
+ Norwegian bokmål  from Åka Sikrom
+ Russian
+ Slovak
+ Spanish
+ Swedish
+ Ukrainian
+ Update Aragonese
+
+
+Overview of changes in 3.15.90
+=============================
+
+* New smart playlist - Favourite tracks, all views updated to allow
+  making a track favourite
+* All Artists is not selected by default - improves performance
+* All smart playlists now retyurn max 50 items
+* Playlists menu now uses popover
+* Notification appears on loading operations
+* Favourite songs are now displayed on search view
+* GStreamer discoverer performance fixes from garnacho
+* Minor UI fixes
+
+
+* Bugs fixed:
+ 744005 stars in Album/Artist/Search views
+ 729525 Show a loading animation when Add to Playlist is clicked in Albums and Artists view
+ 729377 Convert menu of gear button in the Playlists view into a popover
+ 743310 Updates to Smart Playlist functionality in 3.15.4
+
+
+* Updated translations and help files
+
+Overview of changes in 3.15.4
+=============================
+
+* Smart playlists - Most Played, Never Played, Recently Played
+  The list is not yet final, stay tuned. Note that we use Last.fm's way
+  to count song as 'played' - more than 40% of song content should be played.
+* Chunked loading was removed - scrolling should be faster
+* Content is now hidden before fully loaded - notification on the progress will
+  land in master in next version.
+* Playlists are remvoed after time out, removal can be undone
+* Dependency cnahge: libmediaart-2.0.pc is now required
+* Replaygain tags are now supported
+* Overall performance fixes
+
+* Bugs fixed:
+ 729376 New Playlist in application menu doesn't do anything
+ 704257 Visible content loading
+ 742603 Regression: empty covers are oversized in playbar, still 'in-progress' on artists view
+ 742451 Support Undo when removing playlists
+ 733686 Gnome music will not launch
+ 726459 Crash on playlist tabs when new media has been scanned
+ 702519 Smart playlists
+ 742800 Playlist broken due to typo
+ 742123 Hitting 'cancel' while creating new playlist crashes program
+ 731613 gnome-music-3.12.2 fails to start if xdg default directories are not created
+ 742011 Query: add a/an to articles
+ 730269  ReplayGain support?
+
+* Updated translations and help files
+
 Overview of changes in 3.15.2
 =============================
 

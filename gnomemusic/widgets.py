@@ -33,40 +33,74 @@
 
 from gi.repository import Gtk, Gdk, Gd, GLib, GObject, Pango, Gio
 from gi.repository import GdkPixbuf, Grl
-from gi.repository import Tracker
 from gettext import gettext as _, ngettext
 from gnomemusic.grilo import grilo
 from gnomemusic.albumArtCache import AlbumArtCache
-from gnomemusic.playlists import Playlists
+from gnomemusic.player import DiscoveryStatus
+from gnomemusic.playlists import Playlists, StaticPlaylists
 from gnomemusic import log
 import logging
 logger = logging.getLogger(__name__)
 
-playlist = Playlists.get_default()
-
-try:
-    tracker = Tracker.SparqlConnection.get(None)
-except Exception as e:
-    from sys import exit
-    logger.error("Cannot connect to tracker, error '%s'\Exiting" % str(e))
-    exit(1)
-
 ALBUM_ART_CACHE = AlbumArtCache.get_default()
 NOW_PLAYING_ICON_NAME = 'media-playback-start-symbolic'
 ERROR_ICON_NAME = 'dialog-error-symbolic'
+
+try:
+    settings = Gio.Settings.new('org.gnome.Music')
+    MAX_TITLE_WIDTH = settings.get_int('max-width-chars')
+except Exception as e:
+    MAX_TITLE_WIDTH = 20
+    logger.error("Error on setting widget max-width-chars: %s" % str(e))
+
+playlists = Playlists.get_default()
+
+
+class StarHandler():
+    @log
+    def __init__(self, parent, star_index):
+        self.star_index = star_index
+        self.star_renderer_click = False
+        self.parent = parent
+
+    @log
+    def _add_star_renderers(self, list_widget, cols, hidden=False):
+        star_renderer = CellRendererClickablePixbuf(self.parent.view, hidden=hidden)
+        star_renderer.connect("clicked", self._on_star_toggled)
+        list_widget.add_renderer(star_renderer, lambda *args: None, None)
+        cols[0].clear_attributes(star_renderer)
+        cols[0].add_attribute(star_renderer, 'show_star', self.star_index)
+
+    @log
+    def _on_star_toggled(self, widget, path):
+        try:
+            _iter = self.parent.model.get_iter(path)
+        except TypeError:
+            return
+
+        new_value = not self.parent.model.get_value(_iter, self.star_index)
+        self.parent.model.set_value(_iter, self.star_index, new_value)
+        song_item = self.parent.model.get_value(_iter, 5)
+        grilo.toggle_favorite(song_item)  # toggle favorite status in database
+        playlists.update_static_playlist(StaticPlaylists.Favorites)
+
+        # Use this flag to ignore the upcoming _on_item_activated call
+        self.star_renderer_click = True
 
 
 class AlbumWidget(Gtk.EventBox):
 
     tracks = []
     duration = 0
-    symbolicIcon = ALBUM_ART_CACHE.get_default_icon(256, 256)
+    loadingIcon = ALBUM_ART_CACHE.get_default_icon(256, 256, True)
+    noArtworkIcon = ALBUM_ART_CACHE.get_default_icon(256, 256, False)
 
     @log
-    def __init__(self, player):
+    def __init__(self, player, parentview):
         Gtk.EventBox.__init__(self)
         self.player = player
         self.iterToClean = None
+        self.parentview = parentview
 
         self.ui = Gtk.Builder()
         self.ui.add_from_resource('/org/gnome/Music/AlbumWidget.ui')
@@ -89,8 +123,8 @@ class AlbumWidget(Gtk.EventBox):
         self.view.remove(child_view)
         view_box.add(child_view)
         self.add(self.ui.get_object('AlbumWidget'))
+        self.star_handler = StarHandler(self, 9)
         self._add_list_renderers()
-        # TODO: make this work
         self.get_style_context().add_class('view')
         self.get_style_context().add_class('content-view')
         self.show_all()
@@ -101,16 +135,20 @@ class AlbumWidget(Gtk.EventBox):
 
     @log
     def _on_item_activated(self, widget, id, path):
+        if self.star_handler.star_renderer_click:
+            self.star_handler.star_renderer_click = False
+            return
+
         _iter = self.model.get_iter(path)
 
-        if(self.model.get_value(_iter, 7) != ERROR_ICON_NAME):
+        if self.model.get_value(_iter, 10) != DiscoveryStatus.FAILED:
             if (self.iterToClean and self.player.playlistId == self.album):
                 item = self.model.get_value(self.iterToClean, 5)
                 title = AlbumArtCache.get_media_title(item)
                 self.model.set_value(self.iterToClean, 0, title)
                 # Hide now playing icon
                 self.model.set_value(self.iterToClean, 6, False)
-            self.player.set_playlist('Album', self.album, self.model, _iter, 5)
+            self.player.set_playlist('Album', self.album, self.model, _iter, 5, 11)
             self.player.set_playing(True)
 
     @log
@@ -125,16 +163,14 @@ class AlbumWidget(Gtk.EventBox):
         cells[1].set_visible(False)
 
         now_playing_symbol_renderer = Gtk.CellRendererPixbuf(xpad=0,
-                                                             xalign=1.0,
+                                                             xalign=0.5,
                                                              yalign=0.5)
 
         column_now_playing = Gtk.TreeViewColumn()
-        column_now_playing.set_fixed_width(24)
+        column_now_playing.set_fixed_width(48)
         column_now_playing.pack_start(now_playing_symbol_renderer, False)
-        column_now_playing.add_attribute(now_playing_symbol_renderer,
-                                         'visible', 9)
-        column_now_playing.add_attribute(now_playing_symbol_renderer,
-                                         'icon_name', 7)
+        column_now_playing.set_cell_data_func(now_playing_symbol_renderer,
+                                              self._on_list_widget_icon_render, None)
         list_widget.insert_column(column_now_playing, 0)
 
         type_renderer = Gd.StyledTextRenderer(
@@ -156,6 +192,22 @@ class AlbumWidget(Gtk.EventBox):
         cols[0].clear_attributes(durationRenderer)
         cols[0].add_attribute(durationRenderer, 'markup', 1)
 
+        self.star_handler._add_star_renderers(list_widget, cols)
+
+    def _on_list_widget_icon_render(self, col, cell, model, _iter, data):
+        if not self.player.currentTrackUri:
+            cell.set_visible(False)
+            return
+
+        if model.get_value(_iter, 10) == DiscoveryStatus.FAILED:
+            cell.set_property('icon-name', ERROR_ICON_NAME)
+            cell.set_visible(True)
+        elif model.get_value(_iter, 5).get_url() == self.player.currentTrackUri:
+            cell.set_property('icon-name', NOW_PLAYING_ICON_NAME)
+            cell.set_visible(True)
+        else:
+            cell.set_visible(False)
+
     @log
     def _create_model(self):
         self.model = Gtk.ListStore(
@@ -169,6 +221,8 @@ class AlbumWidget(Gtk.EventBox):
             GObject.TYPE_STRING,
             GObject.TYPE_BOOLEAN,
             GObject.TYPE_BOOLEAN,  # icon shown
+            GObject.TYPE_BOOLEAN,
+            GObject.TYPE_INT
         )
 
     @log
@@ -179,21 +233,12 @@ class AlbumWidget(Gtk.EventBox):
         real_artist = item.get_string(Grl.METADATA_KEY_ARTIST)\
             or item.get_author()\
             or _("Unknown Artist")
-        self.ui.get_object('cover').set_from_pixbuf(self.symbolicIcon)
+        self.ui.get_object('cover').set_from_pixbuf(self.loadingIcon)
         ALBUM_ART_CACHE.lookup(item, 256, 256, self._on_look_up, None, real_artist, album)
 
-        # if the active queue has been set by self album,
-        # use it as model, otherwise build the liststore
-        cached_playlist = self.player.running_playlist('Album', album)
-        if cached_playlist:
-            self.model = cached_playlist
-            currentTrack = self.player.playlist.get_iter(self.player.currentTrack.get_path())
-            self.update_model(self.player, cached_playlist,
-                              currentTrack)
-        else:
-            self.duration = 0
-            self._create_model()
-            GLib.idle_add(grilo.populate_album_songs, item, self.add_item)
+        self.duration = 0
+        self._create_model()
+        GLib.idle_add(grilo.populate_album_songs, item, self.add_item)
         header_bar._select_button.connect(
             'toggled', self._on_header_select_button_toggled)
         header_bar._cancel_button.connect(
@@ -247,35 +292,29 @@ class AlbumWidget(Gtk.EventBox):
                 self.player.actionbar.set_visible(True)
 
     @log
-    def _on_discovered(self, info, error, _iter):
-        if error:
-            self.model.set(_iter, [7, 9], [ERROR_ICON_NAME, True])
-
-    @log
     def add_item(self, source, prefs, track, remaining, data=None):
         if track:
             self.tracks.append(track)
             self.duration = self.duration + track.get_duration()
             _iter = self.model.append()
-            self.player.discover_item(track, self._on_discovered, _iter)
             escapedTitle = AlbumArtCache.get_media_title(track, True)
             self.model.set(_iter,
-                           [0, 1, 2, 3, 4, 5, 7, 9],
+                           [0, 1, 2, 3, 4, 5, 9],
                            [escapedTitle,
                             self.player.seconds_to_string(
                                 track.get_duration()),
-                            '', '', None, track, NOW_PLAYING_ICON_NAME,
-                            False])
+                            '', '', None, track, bool(track.get_lyrics())])
             self.ui.get_object('running_length_label_info').set_text(
                 _("%d min") % (int(self.duration / 60) + 1))
 
     @log
     def _on_look_up(self, pixbuf, path, data=None):
         _iter = self.iterToClean
-        if pixbuf:
-            self.ui.get_object('cover').set_from_pixbuf(pixbuf)
-            if _iter:
-                self.model.set(_iter, [4], [pixbuf])
+        if not pixbuf:
+            pixbuf = self.noArtworkIcon
+        self.ui.get_object('cover').set_from_pixbuf(pixbuf)
+        if _iter:
+            self.model.set(_iter, [4], [pixbuf])
 
     @log
     def update_model(self, player, playlist, currentIter):
@@ -292,32 +331,44 @@ class AlbumWidget(Gtk.EventBox):
             escapedTitle = AlbumArtCache.get_media_title(song, True)
             if (song == currentSong):
                 title = '<b>%s</b>' % escapedTitle
-                iconVisible = True
                 song_passed = True
             elif (song_passed):
                 title = '<span>%s</span>' % escapedTitle
-                iconVisible = False
             else:
                 title = '<span color=\'grey\'>%s</span>' % escapedTitle
-                iconVisible = False
             playlist.set_value(_iter, 0, title)
-            if(playlist.get_value(_iter, 7) != ERROR_ICON_NAME):
-                playlist.set_value(_iter, 9, iconVisible)
             _iter = playlist.iter_next(_iter)
             self.ui.get_object('running_length_label_info').set_text(
                 _("%d min") % (int(self.duration / 60) + 1))
         return False
+
+    # @log
+    # def _on_star_toggled(self, widget, path):
+    #     try:
+    #         _iter = self.model.get_iter(path)
+    #     except TypeError:
+    #         return
+
+    #     new_value = not self.model.get_value(_iter, 10)
+    #     self.model.set_value(_iter, 10, new_value)
+    #     song_item = self.model.get_value(_iter, 5) # er, will this definitely return MediaAudio obj.?
+    #     grilo.toggle_favorite(song_item) # toggle favorite status in database
+    #     playlists.update_static_playlist(StaticPlaylists.Favorites)
+
+    #     # Use this flag to ignore the upcoming _on_item_activated call
+    #     self.star_renderer_click = True
 
 
 class ArtistAlbums(Gtk.Box):
 
     @log
     def __init__(self, artist, albums, player,
-                 header_bar, selection_toolbar, selectionModeAllowed=False):
+                 header_bar, selection_toolbar, window, selectionModeAllowed=False):
         Gtk.Box.__init__(self, orientation=Gtk.Orientation.VERTICAL)
         self.player = player
         self.artist = artist
         self.albums = albums
+        self.window = window
         self.selectionMode = False
         self.selectionModeAllowed = selectionModeAllowed
         self.selection_toolbar = selection_toolbar
@@ -334,7 +385,8 @@ class ArtistAlbums(Gtk.Box):
                                    GObject.TYPE_BOOLEAN,  # icon shown
                                    GObject.TYPE_STRING,   # icon
                                    GObject.TYPE_OBJECT,   # song object
-                                   GObject.TYPE_BOOLEAN
+                                   GObject.TYPE_BOOLEAN,
+                                   GObject.TYPE_INT
                                    )
         self.model.connect('row-changed', self._model_row_changed)
 
@@ -353,14 +405,24 @@ class ArtistAlbums(Gtk.Box):
         self._songsGridSizeGroup = Gtk.SizeGroup.new(Gtk.SizeGroupMode.HORIZONTAL)
         self.pack_start(self._scrolledWindow, True, True, 0)
 
-        for album in albums:
-            self.add_album(album)
+        self.hide()
+        self.window._init_loading_notification()
 
-        self.show_all()
+        for album in albums:
+            is_last_album = False
+            if album == albums[-1]:
+                is_last_album = True
+            self.add_album(album, is_last_album)
+
         self.player.connect('playlist-item-changed', self.update_model)
 
+    def _on_last_album_displayed(self, data=None):
+        self.window.notification.dismiss()
+        self.show_all()
+
     @log
-    def add_album(self, album):
+    def add_album(self, album, is_last_album=False):
+        self.window.notification.set_timeout(0)
         widget = ArtistAlbumWidget(
             self.artist, album, self.player, self.model,
             self.header_bar, self.selectionModeAllowed
@@ -369,6 +431,9 @@ class ArtistAlbums(Gtk.Box):
         self._songsGridSizeGroup.add_widget(widget.songsGrid)
         self._albumBox.pack_start(widget, False, False, 0)
         self.widgets.append(widget)
+
+        if is_last_album:
+            widget.connect('tracks-loaded', self._on_last_album_displayed)
 
     @log
     def update_model(self, player, playlist, currentIter):
@@ -458,10 +523,13 @@ class AllArtistsAlbums(ArtistAlbums):
     def _populate(self, data=None):
         if grilo.tracker:
             GLib.idle_add(grilo.populate_albums,
-                          self._offset, self.add_item, -1)
+                          self._offset, self.add_item)
 
     @log
     def add_item(self, source, param, item, remaining=0, data=None):
+        if remaining == 0:
+            self._on_last_album_displayed()
+
         if item:
             self._offset += 1
             self.add_album(item)
@@ -469,7 +537,12 @@ class AllArtistsAlbums(ArtistAlbums):
 
 class ArtistAlbumWidget(Gtk.Box):
 
-    pixbuf = AlbumArtCache.get_default().get_default_icon(128, 128)
+    __gsignals__ = {
+        'tracks-loaded': (GObject.SIGNAL_RUN_FIRST, None, ()),
+    }
+
+    loadingIcon = AlbumArtCache.get_default().get_default_icon(128, 128, True)
+    noArtworkIcon = ALBUM_ART_CACHE.get_default_icon(128, 128, False)
 
     @log
     def __init__(self, artist, album, player, model, header_bar, selectionModeAllowed):
@@ -489,7 +562,7 @@ class ArtistAlbumWidget(Gtk.Box):
         GLib.idle_add(self._update_album_art)
 
         self.cover = self.ui.get_object('cover')
-        self.cover.set_from_pixbuf(self.pixbuf)
+        self.cover.set_from_pixbuf(self.loadingIcon)
         self.songsGrid = self.ui.get_object('grid1')
         self.ui.get_object('title').set_label(album.get_title())
         if album.get_creation_date():
@@ -498,29 +571,15 @@ class ArtistAlbumWidget(Gtk.Box):
                 str(album.get_creation_date().get_year())
             )
         self.tracks = []
-        GLib.idle_add(grilo.populate_album_songs, album, self.add_item)
+        grilo.populate_album_songs(album, self.add_item)
         self.pack_start(self.ui.get_object('ArtistAlbumWidget'), True, True, 0)
-        self.show_all()
-
-        try:
-            self.settings = Gio.Settings.new('org.gnome.Music')
-            self.max_title_width = self.settings.get_int('max-width-chars')
-        except Exception as e:
-            self.max_title_width = 20
-            logger.error("Error on setting widget max-width-chars: %s" % str(e))
-
-    @log
-    def _on_discovered(self, info, error, song_widget):
-        if error:
-            self.model.set(song_widget._iter, [4], [ERROR_ICON_NAME])
-            song_widget.now_playing_sign.set_from_icon_name(
-                ERROR_ICON_NAME,
-                Gtk.IconSize.SMALL_TOOLBAR)
-            song_widget.now_playing_sign.show()
-            song_widget.can_be_played = False
 
     @log
     def add_item(self, source, prefs, track, remaining, data=None):
+        if remaining == 0:
+            self.songsGrid.show_all()
+            self.emit("tracks-loaded")
+
         if track:
             self.tracks.append(track)
         else:
@@ -535,7 +594,7 @@ class ArtistAlbumWidget(Gtk.Box):
                 title = AlbumArtCache.get_media_title(track)
                 ui.get_object('title').set_text(title)
                 ui.get_object('title').set_alignment(0.0, 0.5)
-                ui.get_object('title').set_max_width_chars(self.max_title_width)
+                ui.get_object('title').set_max_width_chars(MAX_TITLE_WIDTH)
 
                 self.songsGrid.attach(
                     song_widget,
@@ -552,11 +611,9 @@ class ArtistAlbumWidget(Gtk.Box):
                 song_widget.checkButton.connect(
                     'toggled', self._check_button_toggled, song_widget
                 )
-                self.player.discover_item(track, self._on_discovered, song_widget)
                 self.model.set(itr,
-                               [0, 1, 2, 3, 4, 5],
-                               [title, '', '', False,
-                                NOW_PLAYING_ICON_NAME, track])
+                               [0, 1, 2, 3, 5],
+                               [title, '', '', False, track])
                 song_widget.now_playing_sign = ui.get_object('image1')
                 song_widget.now_playing_sign.set_from_icon_name(
                     NOW_PLAYING_ICON_NAME,
@@ -566,7 +623,6 @@ class ArtistAlbumWidget(Gtk.Box):
                 song_widget.can_be_played = True
                 song_widget.connect('button-release-event',
                                     self.track_selected)
-            self.songsGrid.show_all()
 
     @log
     def _update_album_art(self):
@@ -579,8 +635,9 @@ class ArtistAlbumWidget(Gtk.Box):
 
     @log
     def _get_album_cover(self, pixbuf, path, data=None):
-        if pixbuf:
-            self.cover.set_from_pixbuf(pixbuf)
+        if not pixbuf:
+            pixbuf = self.noArtworkIcon
+        self.cover.set_from_pixbuf(pixbuf)
 
     @log
     def track_selected(self, widget, event):
@@ -601,7 +658,7 @@ class ArtistAlbumWidget(Gtk.Box):
 
         self.player.stop()
         self.player.set_playlist('Artist', self.artist,
-                                 widget.model, widget._iter, 5)
+                                 widget.model, widget._iter, 5, 6)
         self.player.set_playing(True)
 
     @log
@@ -627,6 +684,14 @@ class ArtistAlbumWidget(Gtk.Box):
             return
         songWidget = model[_iter][5].song_widget
         selected = model[_iter][6]
+
+        if model[_iter][11] == DiscoveryStatus.FAILED:
+            songWidget.now_playing_sign.set_from_icon_name(
+                ERROR_ICON_NAME,
+                Gtk.IconSize.SMALL_TOOLBAR)
+            songWidget.now_playing_sign.show()
+            songWidget.can_be_played = False
+
         if selected != songWidget.checkButton.get_active():
             songWidget.checkButton.set_active(selected)
 
@@ -656,7 +721,8 @@ class PlaylistDialog():
         self._cancel_button.connect('clicked', self._on_cancel_button_clicked)
         self._select_button.connect('clicked', self._on_selection)
 
-        playlist.connect('playlist-created', self._on_playlist_created)
+        self.playlist = Playlists.get_default()
+        self.playlist.connect('playlist-created', self._on_playlist_created)
 
     @log
     def get_selected(self):
@@ -738,12 +804,52 @@ class PlaylistDialog():
     @log
     def _on_editing_done(self, editable, data=None):
         if editable.get_text() != '':
-            playlist.create_playlist(editable.get_text())
+            self.playlist.create_playlist(editable.get_text())
 
     @log
     def _on_playlist_created(self, playlists, item):
         new_iter = self._add_item_to_model(item)
-        self.view.set_cursor(self.model.get_path(new_iter),
-                             self.view.get_columns()[0], False)
-        self.view.row_activated(self.model.get_path(new_iter),
-                                self.view.get_columns()[0])
+        if self.view.get_columns():
+            self.view.set_cursor(self.model.get_path(new_iter),
+                                 self.view.get_columns()[0], False)
+            self.view.row_activated(self.model.get_path(new_iter),
+                                    self.view.get_columns()[0])
+
+
+class CellRendererClickablePixbuf(Gtk.CellRendererPixbuf):
+
+    __gsignals__ = {'clicked': (GObject.SIGNAL_RUN_LAST, GObject.TYPE_NONE,
+                                (GObject.TYPE_STRING,))}
+    __gproperties__ = {
+        'show_star': (GObject.TYPE_BOOLEAN, 'Show star', 'show star', False, GObject.PARAM_READWRITE)}
+
+    starIcon = 'starred-symbolic'
+    nonStarIcon = 'non-starred-symbolic'
+
+    def __init__(self, view, hidden=False, *args, **kwargs):
+        Gtk.CellRendererPixbuf.__init__(self, *args, **kwargs)
+        self.set_property('mode', Gtk.CellRendererMode.ACTIVATABLE)
+        self.set_property('xpad', 32)
+        self.set_property('icon_name', self.nonStarIcon)
+        self.view = view
+        self.hidden = hidden
+        self.show_star = False
+
+    def do_activate(self, event, widget, path, background_area, cell_area, flags):
+        self.show_star = False
+        self.emit('clicked', path)
+
+    def do_get_property(self, property):
+        if property.name == 'show-star':
+            return self.show_star
+
+    def do_set_property(self, property, value):
+        if property.name == 'show-star':
+            if self.show_star:
+                self.set_property('icon_name', self.starIcon)
+            else:
+                if not self.hidden:
+                    self.set_property('icon_name', self.nonStarIcon)
+                else:
+                    self.set_property('icon_name', '')
+            self.show_star = value

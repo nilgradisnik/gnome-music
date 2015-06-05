@@ -31,12 +31,14 @@ GtkTreeView{
     padding-left:24px;
 }
 .artist-panel-white{
+    border-right: 1px solid #a1a1a1;
     background-color: #d7dad7;
 }
 .artist-panel-white:selected{
     background-color: #888A85;
 }
 .artist-panel-dark{
+    border-right: 1px solid #a1a1a1;
     background-color: #282528;
 }
 .artist-panel-dark:selected{
@@ -144,7 +146,7 @@ GtkTreeView{
 .music-albuminfo-album {
     font-size: 14px;
     font-weight: bold;
-    color: mix (@theme_fg_color, @theme_bg_color, 0.50);    
+    color: mix (@theme_fg_color, @theme_bg_color, 0.50);
 }
 
 .content-view { background-color: @theme_bg; }

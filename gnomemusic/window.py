@@ -30,9 +30,11 @@
 # delete this exception statement from your version.
 
 
-from gi.repository import Gtk, Gdk, Gio, GLib, Tracker
+from gi.repository import Gtk, Gdk, Gio, GLib
+from gi.repository import Gd
 from gettext import gettext as _, ngettext
 
+from gnomemusic import TrackerWrapper
 from gnomemusic.toolbar import Toolbar, ToolbarState
 from gnomemusic.player import Player, SelectionToolbar
 from gnomemusic.query import Query
@@ -44,13 +46,8 @@ from gnomemusic import log
 import logging
 logger = logging.getLogger(__name__)
 
+tracker = TrackerWrapper().tracker
 playlist = Playlists.get_default()
-try:
-    tracker = Tracker.SparqlConnection.get(None)
-except Exception as e:
-    from sys import exit
-    logger.error("Cannot connect to tracker, error '%s'\Exiting" % str(e))
-    exit(1)
 
 
 class Window(Gtk.ApplicationWindow):
@@ -89,9 +86,11 @@ class Window(Gtk.ApplicationWindow):
         if self.settings.get_value('window-maximized'):
             self.maximize()
 
-        self.connect("window-state-event", self._on_window_state_event)
-        self.connect("configure-event", self._on_configure_event)
         self._setup_view()
+
+        self.connect("window-state-event", self._on_window_state_event)
+        self.configure_event_handler = self.connect("configure-event", self._on_configure_event)
+
         self.proxy = Gio.DBusProxy.new_sync(Gio.bus_get_sync(Gio.BusType.SESSION, None),
                                             Gio.DBusProxyFlags.NONE,
                                             None,
@@ -132,8 +131,12 @@ class Window(Gtk.ApplicationWindow):
                 self.toolbar._select_button.set_sensitive(True)
                 self.toolbar.show_stack()
 
-    @log
     def _on_configure_event(self, widget, event):
+        with self.handler_block(self.configure_event_handler):
+            GLib.idle_add(self.store_window_size_and_position, widget, priority=GLib.PRIORITY_LOW)
+
+    @log
+    def store_window_size_and_position(self, widget):
         size = widget.get_size()
         self.settings.set_value('window-size', GLib.Variant('ai', [size[0], size[1]]))
 
@@ -178,7 +181,7 @@ class Window(Gtk.ApplicationWindow):
     @log
     def _setup_view(self):
         self._box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.player = Player()
+        self.player = Player(self)
         self.selection_toolbar = SelectionToolbar()
         self.toolbar = Toolbar()
         self.views = []
@@ -195,22 +198,27 @@ class Window(Gtk.ApplicationWindow):
         self._box.pack_start(self.player.actionbar, False, False, 0)
         self._box.pack_start(self.selection_toolbar.actionbar, False, False, 0)
         self.add(self._box)
-        count = 1
+        count = 0
         cursor = None
-        try:
-            cursor = tracker.query(Query.all_songs_count(), None)
-        except Exception as e:
-            logger.error("Tracker query crashed: %s" % e)
-            count = 0
 
-        if cursor is not None and cursor.next(None):
-            count = cursor.get_integer(0)
-        if count > 0:
-            self._switch_to_player_view()
-        # To revert to the No Music View when no songs are found
+        if Query.music_folder and Query.download_folder:
+            try:
+                cursor = tracker.query(Query.all_songs_count(), None)
+                if cursor is not None and cursor.next(None):
+                    count = cursor.get_integer(0)
+            except Exception as e:
+                logger.error("Tracker query crashed: %s" % e)
+                count = 0
+
+            if count > 0:
+                self._switch_to_player_view()
+            # To revert to the No Music View when no songs are found
+            else:
+                if self.toolbar._selectionMode is False:
+                    self._switch_to_empty_view()
         else:
-            if self.toolbar._selectionMode is False:
-                self._switch_to_empty_view()
+            # Revert to No Music view if XDG dirs are not set
+            self._switch_to_empty_view()
 
         self.toolbar._search_button.connect('toggled', self._on_search_toggled)
         self.toolbar.connect('selection-mode-changed', self._on_selection_mode_changed)
@@ -275,7 +283,7 @@ class Window(Gtk.ApplicationWindow):
         if self.toolbar._selectionMode is False:
             return
         if self.toolbar._state == ToolbarState.MAIN:
-            model = self._stack.get_visible_child()._model
+            model = self._stack.get_visible_child().model
         else:
             model = self._stack.get_visible_child().get_visible_child().model
         count = self._set_selection(model, True)
@@ -291,7 +299,7 @@ class Window(Gtk.ApplicationWindow):
     @log
     def _on_select_none(self, action, param):
         if self.toolbar._state == ToolbarState.MAIN:
-            model = self._stack.get_visible_child()._model
+            model = self._stack.get_visible_child().model
         else:
             model = self._stack.get_visible_child().get_visible_child().model
         self._set_selection(model, False)
@@ -299,6 +307,57 @@ class Window(Gtk.ApplicationWindow):
         self.selection_toolbar._remove_from_playlist_button.set_sensitive(False)
         self.toolbar._selection_menu_label.set_text(_("Click on items to select them"))
         self._stack.get_visible_child().queue_draw()
+
+    @log
+    def _init_loading_notification(self):
+        self.notification = Gd.Notification()
+        self.notification.set_timeout(5)
+        grid = Gtk.Grid(valign=Gtk.Align.CENTER, margin_right=8)
+        grid.set_column_spacing(8)
+        spinner = Gtk.Spinner()
+        spinner.start()
+        grid.add(spinner)
+        label = Gtk.Label.new(_("Loading"))
+        grid.add(label)
+        self.notification.add(grid)
+        self.notification.show_all()
+        GLib.timeout_add(1000, self._overlay.add_overlay, self.notification)
+
+    @log
+    def _init_playlist_removal_notification(self):
+        self.notification = Gd.Notification()
+        self.notification.set_timeout(20)
+
+        grid = Gtk.Grid(valign=Gtk.Align.CENTER, margin_right=8)
+        grid.set_column_spacing(8)
+        self.notification.add(grid)
+
+        undo_button = Gtk.Button.new_with_mnemonic(_("_Undo"))
+        label = _("Playlist %s removed" % (
+            self.views[3].current_playlist.get_title()))
+        grid.add(Gtk.Label.new(label))
+        grid.add(undo_button)
+
+        self.notification.show_all()
+        self._overlay.add_overlay(self.notification)
+
+        self.notification.deletion_index = self.views[3].current_playlist_index
+
+        self.notification.connect("dismissed", self._playlist_removal_notification_dismissed)
+        undo_button.connect("clicked", self._undo_deletion)
+
+    @log
+    def _playlist_removal_notification_dismissed(self, widget):
+        if self.views[3].really_delete:
+            Views.playlists.delete_playlist(self.views[3].pl_todelete)
+        else:
+            self.views[3].really_delete = True
+
+    @log
+    def _undo_deletion(self, widget):
+        self.views[3].really_delete = False
+        self.notification.dismiss()
+        self.views[3].undo_playlist_deletion(self.notification.deletion_index)
 
     @log
     def _on_key_press(self, widget, event):
@@ -317,6 +376,9 @@ class Window(Gtk.ApplicationWindow):
                     self.curr_view.set_visible_child(self.curr_view._grid)
                     self.toolbar.set_state(ToolbarState.MAIN)
         else:
+            if (event.keyval == Gdk.KEY_Delete):
+                if self._stack.get_visible_child() == self.views[3]:
+                    self.views[3]._on_delete_activate(None)
             # Close search bar after Esc is pressed
             if event.keyval == Gdk.KEY_Escape:
                 self.toolbar.searchbar.show_bar(False)

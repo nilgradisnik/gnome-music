@@ -28,7 +28,8 @@
 # delete this exception statement from your version.
 
 
-from gi.repository import Gtk, GObject
+from gi.repository import Gtk, GObject, GLib
+from gettext import gettext as _
 
 from gnomemusic.searchbar import Searchbar, DropDown
 

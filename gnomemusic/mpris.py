@@ -346,15 +346,16 @@ class MediaPlayer2Service(dbus.service.Object):
 
     @log
     def _on_playlist_modified(self, path=None, _iter=None, data=None):
-        path = self.player.currentTrack.get_path()
-        currentTrack = self.player.playlist[path][self.player.playlistField]
-        track_list = self._get_track_list()
-        self.TrackListReplaced(track_list, self._get_media_id(currentTrack))
-        self.PropertiesChanged(self.MEDIA_PLAYER2_TRACKLIST_IFACE,
-                               {
-                                   'Tracks': track_list,
-                               },
-                               [])
+        if self.player.currentTrack and self.player.currentTrack.valid():
+            path = self.player.currentTrack.get_path()
+            currentTrack = self.player.playlist[path][self.player.playlistField]
+            track_list = self._get_track_list()
+            self.TrackListReplaced(track_list, self._get_media_id(currentTrack))
+            self.PropertiesChanged(self.MEDIA_PLAYER2_TRACKLIST_IFACE,
+                                   {
+                                       'Tracks': track_list,
+                                   },
+                                   [])
 
     @log
     def _reload_playlists(self):
@@ -411,7 +412,7 @@ class MediaPlayer2Service(dbus.service.Object):
         elif self.first_song_handler == 0:
             window = self.app.get_active_window()
             window._stack.set_visible_child(window.views[2])
-            model = window.views[2]._model
+            model = window.views[2].model
             if model.iter_n_children(None):
                 _iter = model.get_iter_first()
                 self._play_first_song(model, model.get_path(_iter), _iter)

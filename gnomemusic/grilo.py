@@ -26,7 +26,7 @@
 # delete this exception statement from your version.
 from gi.repository import GLib, GObject
 from gnomemusic.query import Query
-from gnomemusic import log
+from gnomemusic import log, TrackerWrapper
 import logging
 import os
 os.environ['GRL_PLUGIN_RANKS'] = 'local-metadata:3,filesystem:2,tracker:1,lastfm-albumart:0'
@@ -48,6 +48,7 @@ class Grilo(GObject.GObject):
         Grl.METADATA_KEY_DURATION,
         Grl.METADATA_KEY_CREATION_DATE,
         Grl.METADATA_KEY_URL,
+        Grl.METADATA_KEY_LYRICS,
         Grl.METADATA_KEY_THUMBNAIL]
 
     METADATA_THUMBNAIL_KEYS = [
@@ -82,6 +83,8 @@ class Grilo(GObject.GObject):
 
         self.registry = Grl.Registry.get_default()
 
+        self.sparqltracker = TrackerWrapper().tracker
+
     @log
     def _find_sources(self):
         self.registry.connect('source_added', self._on_source_added)
@@ -97,28 +100,37 @@ class Grilo(GObject.GObject):
     @log
     def _on_content_changed(self, mediaSource, changedMedias, changeType, locationUnknown):
         try:
-            for media in changedMedias:
-                media_id = media.get_id()
-                if changeType == Grl.SourceChangeType.ADDED:
-                    # Check that this media is an audio file
-                    query = "select DISTINCT rdf:type nie:mimeType(?urn) as mime-type" +\
-                            " { ?urn rdf:type nie:InformationElement . FILTER (tracker:id(?urn) = %s) }" % media_id
-                    mimeType = grilo.tracker.query_sync(query, [Grl.METADATA_KEY_MIME], grilo.options)[0].get_mime()
-                    if mimeType and mimeType.startswith("audio"):
-                        self.changed_media_ids.append(media_id)
-                if changeType == Grl.SourceChangeType.REMOVED:
-                    # There is no way to check that removed item is a media
-                    # so always do the refresh
-                    # todo: remove one single url
-                    self.changed_media_ids.append(media.get_id())
+            with self.tracker.handler_block(self.notification_handler):
+                for media in changedMedias:
+                    media_id = media.get_id()
+                    if changeType == Grl.SourceChangeType.ADDED:
+                        # Check that this media is an audio file
+                        query = "select DISTINCT rdf:type nie:mimeType(?urn) as mime-type" +\
+                                " { ?urn rdf:type nie:InformationElement . FILTER (tracker:id(?urn) = %s) }" % media_id
+                        mimeType = grilo.tracker.query_sync(query, [Grl.METADATA_KEY_MIME], grilo.options)[0].get_mime()
+                        if mimeType and mimeType.startswith("audio"):
+                            self.changed_media_ids.append(media_id)
+                    if changeType == Grl.SourceChangeType.REMOVED:
+                        # There is no way to check that removed item is a media
+                        # so always do the refresh
+                        # todo: remove one single url
+                        try:
+                            self.changed_media_ids.append(media.get_id())
+                        except Exception as e:
+                            logger.warn("Skipping %s" % media)
 
-            if len(self.changed_media_ids) >= self.CHANGED_MEDIA_MAX_ITEMS:
-                self.emit_change_signal()
-            elif self.changed_media_ids != []:
-                if self.pending_event_id > 0:
-                    GLib.Source.remove(self.pending_event_id)
-                    self.pending_event_id = 0
-                self.pending_event_id = GLib.timeout_add(self.CHANGED_MEDIA_SIGNAL_TIMEOUT, self.emit_change_signal)
+                if self.changed_media_ids == []:
+                    return
+                self.changed_media_ids = list(set(self.changed_media_ids))
+                logger.debug("Changed medias: %s" % self.changed_media_ids)
+
+                if len(self.changed_media_ids) >= self.CHANGED_MEDIA_MAX_ITEMS:
+                    self.emit_change_signal()
+                elif self.changed_media_ids != []:
+                    if self.pending_event_id > 0:
+                        GLib.Source.remove(self.pending_event_id)
+                        self.pending_event_id = 0
+                    self.pending_event_id = GLib.timeout_add(self.CHANGED_MEDIA_SIGNAL_TIMEOUT, self.emit_change_signal)
         except Exception as e:
             logger.warn("Exception in _on_content_changed: %s" % e)
 
@@ -149,7 +161,8 @@ class Grilo(GObject.GObject):
                     if self.tracker is not None:
                         self.emit('ready')
                         self.tracker.notify_change_start()
-                        self.tracker.connect('content-changed', self._on_content_changed)
+                        self.notification_handler = self.tracker.connect(
+                            'content-changed', self._on_content_changed)
 
             elif (id.startswith('grl-upnp')):
                 logger.debug("found upnp source %s" % id)
@@ -214,6 +227,17 @@ class Grilo(GObject.GObject):
         def _callback(source, param, item, remaining, data, error):
             callback(source, param, item, remaining, data)
         self.tracker.query(query, self.METADATA_KEYS, options, _callback, data)
+
+    @log
+    def toggle_favorite(self, song_item):
+        # TODO: change "bool(song_item.get_lyrics())" --> song_item.get_favourite() once query works properly
+        # TODO: when .set/get_favourite work, set_favourite outside loop: item.set_favourite(!item.get_favourite())
+        if bool(song_item.get_lyrics()):  # is favorite
+            self.sparqltracker.update(Query.remove_favorite(song_item.get_url()), GLib.PRIORITY_DEFAULT, None)
+            song_item.set_lyrics("")
+        else:  # not favorite
+            self.sparqltracker.update(Query.add_favorite(song_item.get_url()), GLib.PRIORITY_DEFAULT, None)
+            song_item.set_lyrics("i'm truthy")
 
     @log
     def search(self, q, callback, data=None):

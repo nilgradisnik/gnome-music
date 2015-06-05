@@ -1,6 +1,6 @@
 AC_PREREQ(2.63)
 AC_INIT([gnome-music],
-        [3.15.3],
+        [3.17.1],
         [https://bugzilla.gnome.org/enter_bug.cgi?product=gnome-music],
         [gnome-music],
         [https://wiki.gnome.org/Apps/Music])
@@ -25,14 +25,14 @@ AC_PROG_CC
 AM_PROG_CC_C_O
 LT_INIT([disable-static])
 
-LIBGD_INIT([main-view revealer gir tagged-entry])
+LIBGD_INIT([main-view revealer gir tagged-entry notification])
 
 PKG_PROG_PKG_CONFIG([0.22])
 
 GLIB_GSETTINGS
 GOBJECT_INTROSPECTION_REQUIRE([1.35.9])
 PKG_CHECK_MODULES([GTK], [gtk+-3.0 >= 3.13.2])
-PKG_CHECK_MODULES(MEDIAART, [libmediaart-1.0])
+PKG_CHECK_MODULES(MEDIAART, [libmediaart-2.0])
 
 GLIB_COMPILE_RESOURCES=`$PKG_CONFIG --variable glib_compile_resources gio-2.0`
 AC_SUBST(GLIB_COMPILE_RESOURCES)

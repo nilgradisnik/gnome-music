@@ -33,7 +33,7 @@ from gettext import gettext as _
 import cairo
 from math import pi
 import os
-from threading import Thread
+from threading import Thread, Lock
 from gnomemusic import log
 from gnomemusic.grilo import grilo
 import logging
@@ -81,6 +81,8 @@ def _make_icon_frame(pixbuf, path=None):
 class AlbumArtCache:
     instance = None
     blacklist = {}
+    itr_queue = []
+    threading_lock = Lock()
 
     @classmethod
     def get_default(self):
@@ -143,9 +145,12 @@ class AlbumArtCache:
             logger.warn("Error: %s" % e)
 
     @log
-    def get_default_icon(self, width, height):
+    def get_default_icon(self, width, height, is_loading=False):
         # get a small pixbuf with the given path
-        icon = Gtk.IconTheme.get_default().load_icon('folder-music-symbolic', max(width, height) / 4, 0)
+        icon_name = 'folder-music-symbolic'
+        if is_loading:
+            icon_name = 'content-loading-symbolic'
+        icon = Gtk.IconTheme.get_default().load_icon(icon_name, max(width, height) / 4, 0)
 
         # create an empty pixbuf with the requested size
         result = GdkPixbuf.Pixbuf.new(icon.get_colorspace(),
@@ -167,22 +172,33 @@ class AlbumArtCache:
 
     @log
     def lookup(self, item, width, height, callback, itr, artist, album):
+        if artist in self.blacklist and album in self.blacklist[artist]:
+            self.finish(item, None, None, callback, itr, width, height)
+            return
+
         try:
+            # Make sure we don't lookup the same iterators several times
+            with self.threading_lock:
+                if itr:
+                    if itr.user_data in self.itr_queue:
+                        return
+                    self.itr_queue.append(itr.user_data)
+
             t = Thread(target=self.lookup_worker, args=(item, width, height, callback, itr, artist, album))
             self.thread_queue.put(t)
         except Exception as e:
-            logger.warn("Error: %s" % e.__class__)
+            logger.warn("Error: %s, %s" % (e.__class__, e))
 
     @log
     def lookup_worker(self, item, width, height, callback, itr, artist, album):
         try:
 
             if artist in self.blacklist and album in self.blacklist[artist]:
-                self.finish(item, None, None, callback, itr)
+                self.finish(item, None, None, callback, itr, width, height)
                 return
 
             path = None
-            mediaart_tuple = MediaArt.get_path(artist, album, "album", None)
+            mediaart_tuple = MediaArt.get_path(artist, album, "album")
             for i in mediaart_tuple:
                 if isinstance(i, str):
                     path = i
@@ -194,12 +210,21 @@ class AlbumArtCache:
             width = width or -1
             height = height or -1
             pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, width, height, True)
-            self.finish(item, _make_icon_frame(pixbuf), path, callback, itr)
+            self.finish(item, _make_icon_frame(pixbuf), path, callback, itr, width, height)
         except Exception as e:
             logger.warn("Error: %s" % e)
 
     @log
-    def finish(self, item, pixbuf, path, callback, itr):
+    def finish(self, item, pixbuf, path, callback, itr, width=-1, height=-1, artist=None, album=None):
+        if (pixbuf is None and artist is not None):
+            # Blacklist artist-album combination
+            if artist not in self.blacklist:
+                self.blacklist[artist] = []
+            self.blacklist[artist].append(album)
+
+        if pixbuf is None:
+            pixbuf = self.get_default_icon(width, height, False)
+
         try:
             if path:
                 item.set_thumbnail(GLib.filename_to_uri(path, None))
@@ -220,6 +245,7 @@ class AlbumArtCache:
             self.thread_queue.put(t)
         except Exception as e:
             logger.warn("Error: %s" % e)
+            self.finish(item, None, None, callback, itr, width, height, artist, album)
 
     @log
     def album_art_for_item_callback(self, source, param, item, count, data, error):
@@ -230,19 +256,15 @@ class AlbumArtCache:
 
             uri = item.get_thumbnail()
             if uri is None:
-                # Blacklist artist-album combination
-                if artist not in self.blacklist:
-                    self.blacklist[artist] = []
-                self.blacklist[artist].append(album)
-
-                logger.warn("can't find URL for album '%s' by %s" % (album, artist))
-                self.finish(item, None, None, callback, itr)
+                logger.warn("can't find artwork for album '%s' by %s" % (album, artist))
+                self.finish(item, None, None, callback, itr, width, height, artist, album)
                 return
 
             t = Thread(target=self.download_worker, args=(item, width, height, path, callback, itr, artist, album, uri))
             self.thread_queue.put(t)
         except Exception as e:
             logger.warn("Error: %s" % e)
+            self.finish(item, None, None, callback, itr, width, height, artist, album)
 
     @log
     def download_worker(self, item, width, height, path, callback, itr, artist, album, uri):
@@ -253,3 +275,4 @@ class AlbumArtCache:
             self.lookup_worker(item, width, height, callback, itr, artist, album)
         except Exception as e:
             logger.warn("Error: %s" % e)
+            self.finish(item, None, None, callback, itr, width, height, artist, album)

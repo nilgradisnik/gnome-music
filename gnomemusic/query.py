@@ -31,38 +31,49 @@ import os
 import logging
 logger = logging.getLogger(__name__)
 
+import time
+sparql_midnight_dateTime_format = "%Y-%m-%dT00:00:00Z"
+SECONDS_PER_DAY = 86400
+
 
 class Query():
-    music_folder = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_MUSIC)
-    MUSIC_URI = Tracker.sparql_escape_string(GLib.filename_to_uri(music_folder))
-    download_folder = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD)
-    DOWNLOAD_URI = Tracker.sparql_escape_string(GLib.filename_to_uri(download_folder))
+    music_folder = None
+    MUSIC_URI = None
+    download_folder = None
+    DOWNLOAD_URI = None
+    try:
+        music_folder = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_MUSIC)
+        MUSIC_URI = Tracker.sparql_escape_string(GLib.filename_to_uri(music_folder))
+        download_folder = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD)
+        DOWNLOAD_URI = Tracker.sparql_escape_string(GLib.filename_to_uri(download_folder))
 
-    for folder in [music_folder, download_folder]:
-        if os.path.islink(folder):
-            logger.warn("%s is a symlink, this folder will be omitted" % folder)
-        else:
-            i = len(next(os.walk(folder))[2])
-            logger.debug("Found %d files in %s" % (i, folder))
-
+        for folder in [music_folder, download_folder]:
+            if os.path.islink(folder):
+                logger.warn("%s is a symlink, this folder will be omitted" % folder)
+            else:
+                i = len(next(os.walk(folder))[2])
+                logger.debug("Found %d files in %s" % (i, folder))
+    except TypeError:
+        logger.warn("XDG user dirs are not set")
 
     @staticmethod
     def order_by_statement(attr):
         """Returns a SPARQL ORDER BY statement sorting by the given attribute, ignoring
             articles as defined in _("the"). 'Attr' should be given without parentheses,
             e.g., "attr='?author'"."""
-        return_statement = "fn:lower-case(%(attribute)s)" % {'attribute' : attr }
+        return_statement = "fn:lower-case(%(attribute)s)" % {'attribute': attr}
         # TRANSLATORS: _("the") should be a space-separated list of all-lowercase articles
-            # (such as 'the') that should be ignored when alphabetizing artists/albums. This
-            # list should include 'the' regardless of language. If some articles occur more
-            # frequently than others, most common should appear first, least common last.
-        for article in reversed(_("the").split(" ")):
+        # (such as 'the') that should be ignored when alphabetizing artists/albums. This
+        # list should include 'the' regardless of language. If some articles occur more
+        # frequently than others, most common should appear first, least common last.
+        for article in reversed(_("the a an").split(" ")):
             return_statement = '''IF(fn:starts-with(fn:lower-case(%(attribute)s), "%(article)s"),
             fn:substring(fn:lower-case(%(attribute)s), %(substr_start)s),
-            %(nested_if)s)''' % {'attribute' : attr,
-                'article' : article+" ",
-                'substr_start' : str(len(article)+2),
-                'nested_if' : return_statement }
+            %(nested_if)s)''' % {
+                'attribute': attr,
+                'article': article + " ",
+                'substr_start': str(len(article) + 2),
+                'nested_if': return_statement}
         return return_statement
 
     @staticmethod
@@ -244,8 +255,8 @@ class Query():
             'where_clause': where_clause.replace('\n', ' ').strip(),
             'music_dir': Query.MUSIC_URI,
             'download_dir': Query.DOWNLOAD_URI,
-            'album_order' : Query.order_by_statement("?title"),
-            'artist_order' : Query.order_by_statement("?author")
+            'album_order': Query.order_by_statement("?title"),
+            'artist_order': Query.order_by_statement("?author")
         }
 
         return query
@@ -398,7 +409,7 @@ class Query():
             'music_dir': Query.MUSIC_URI,
             'download_dir': Query.DOWNLOAD_URI,
             'artist_order': Query.order_by_statement("?author"),
-            'album_order' : Query.order_by_statement("nie:title(?album)")
+            'album_order': Query.order_by_statement("nie:title(?album)")
         }
 
         return query
@@ -414,8 +425,13 @@ class Query():
         nmm:artistName(nmm:performer(?song)) AS artist
         nie:title(nmm:musicAlbum(?song)) AS album
         nfo:duration(?song) AS duration
+        IF(bound(?tag), 'truth!', '') AS lyrics
         {
             %(where_clause)s
+            OPTIONAL {
+                ?song nao:hasTag ?tag .
+                FILTER( ?tag = nao:predefined-tag-favorite )
+            }
             FILTER (
                 tracker:uri-is-descendant(
                     '%(music_dir)s', nie:url(?song)
@@ -433,7 +449,7 @@ class Query():
                 }
             )
         }
-    ORDER BY tracker:added(?song)
+    ORDER BY ?artist ?album nmm:setNumber(nmm:musicAlbumDisc(?song)) nmm:trackNumber(?song)
     '''.replace('\n', ' ').strip() % {
             'where_clause': where_clause.replace('\n', ' ').strip(),
             'music_dir': Query.MUSIC_URI,
@@ -489,10 +505,15 @@ class Query():
         nmm:artistName(nmm:performer(?song)) AS artist
         nie:title(nmm:musicAlbum(?song)) AS album
         nfo:duration(?song) AS duration
+        IF(bound(?tag), 'truth!', '') AS lyrics
     WHERE {
         ?song a nmm:MusicPiece ;
               a nfo:FileDataObject ;
               nmm:musicAlbum ?album .
+        OPTIONAL {
+            ?song nao:hasTag ?tag .
+            FILTER( ?tag = nao:predefined-tag-favorite )
+        }
         FILTER (
             tracker:id(?album) = %(album_id)s
         )
@@ -536,6 +557,7 @@ class Query():
         nmm:artistName(nmm:performer(?song)) AS artist
         nie:title(nmm:musicAlbum(?song)) AS album
         nfo:duration(?song) AS duration
+        IF(bound(?tag), 'truth!', '') AS lyrics
     WHERE {
         ?playlist a nmm:Playlist ;
             a nfo:MediaList ;
@@ -545,6 +567,10 @@ class Query():
         ?song a nmm:MusicPiece ;
              a nfo:FileDataObject ;
              nie:url ?url .
+        OPTIONAL {
+            ?song nao:hasTag ?tag .
+            FILTER( ?tag = nao:predefined-tag-favorite )
+        }
         FILTER (
             %(filter_clause)s
         )
@@ -561,8 +587,7 @@ class Query():
          nfo:listPosition(?entry)
     '''.replace('\n', ' ').strip() % {
             'playlist_id': playlist_id,
-            'filter_clause':
-                filter_clause or 'tracker:id(?playlist) = ' + playlist_id,
+            'filter_clause': filter_clause or 'tracker:id(?playlist) = ' + playlist_id,
             'music_dir': Query.MUSIC_URI,
             'download_dir': Query.DOWNLOAD_URI
         }
@@ -645,6 +670,45 @@ class Query():
         return query
 
     @staticmethod
+    def update_playcount(song_url):
+        query = """
+    INSERT OR REPLACE { ?song nie:usageCounter ?playcount . }
+    WHERE {
+        SELECT
+            IF(bound(?usage), (?usage + 1), 1) AS playcount
+            ?song
+            WHERE {
+                ?song a nmm:MusicPiece .
+                OPTIONAL { ?song nie:usageCounter ?usage . }
+                FILTER ( nie:url(?song) = "%(song_url)s" )
+            }
+        }
+    """.replace("\n", " ").strip() % {
+            'song_url': song_url
+        }
+
+        return query
+
+    @staticmethod
+    def update_last_played(song_url, time):
+        query = """
+    INSERT OR REPLACE { ?song nfo:fileLastAccessed '%(time)s' . }
+    WHERE {
+        SELECT
+            ?song
+            WHERE {
+                ?song a nmm:MusicPiece .
+                FILTER ( nie:url(?song) = "%(song_url)s" )
+            }
+        }
+    """.replace("\n", " ").strip() % {
+            'song_url': song_url,
+            'time': time
+        }
+
+        return query
+
+    @staticmethod
     def create_playlist(title):
         query = """
     INSERT {
@@ -656,6 +720,45 @@ class Query():
     }
     """.replace("\n", " ").strip() % {
             'title': title
+        }
+        return query
+
+    @staticmethod
+    def create_tag(tag_text):
+        query = """
+    INSERT OR REPLACE {
+        _:tag
+            a nao:Tag ;
+            rdfs:comment '%(tag_text)s'.
+    }
+    """.replace("\n", " ").strip() % {
+            'tag_text': tag_text
+        }
+        return query
+
+    @staticmethod
+    def create_playlist_with_tag(title, tag_text):
+        # TODO: make this an extension of 'create playlist' rather than its own func.?
+        # TODO: CREATE TAG IF IT DOESN'T EXIST!
+        query = """
+    INSERT {
+        _:playlist
+            a nmm:Playlist ;
+            a nfo:MediaList ;
+            nie:title "%(title)s" ;
+            nfo:entryCounter 0 ;
+            nao:hasTag ?tag.
+    }
+    WHERE {
+        SELECT ?tag
+        WHERE {
+            ?tag a nao:Tag ;
+                rdfs:comment '%(tag_text)s'.
+        }
+    }
+    """.replace("\n", " ").strip() % {
+            'title': title,
+            'tag_text': tag_text
         }
         return query
 
@@ -806,6 +909,18 @@ class Query():
         return Query.playlists(query)
 
     @staticmethod
+    def get_playlist_with_tag(playlist_tag):
+        query = """
+    ?playlist
+        a nmm:Playlist ;
+        nao:hasTag ?tag .
+    ?tag rdfs:comment ?tag_text .
+    FILTER ( ?tag_text = '%(playlist_tag)s' )
+    """.replace('\n', ' ').strip() % {'playlist_tag': playlist_tag}
+
+        return Query.playlists(query)
+
+    @staticmethod
     def get_playlist_with_urn(playlist_urn):
         query = """
     SELECT DISTINCT
@@ -831,6 +946,173 @@ class Query():
         <%(entry_urn)s> a nfo:MediaFileListEntry
     }
     """.replace('\n', ' ').strip() % {'entry_urn': entry_urn}
+        return query
+
+    @staticmethod
+    def clear_playlist_with_id(playlist_id):
+        query = """
+        DELETE {
+            ?playlist
+                nfo:hasMediaFileListEntry ?entry .
+            ?entry
+                a rdfs:Resource .
+        }
+        WHERE {
+            ?playlist
+                a nmm:Playlist ;
+                a nfo:MediaList ;
+                nfo:hasMediaFileListEntry ?entry .
+            FILTER (
+                tracker:id(?playlist) = %(playlist_id)s
+            )
+        }
+        """.replace('\n', ' ').strip() % {'playlist_id': playlist_id}
+
+        return query
+
+    @staticmethod
+    def get_most_played_songs():
+        # TODO: set playlist size somewhere? Currently default is 50.
+        query = """
+        SELECT ?url
+        WHERE {
+            ?song a nmm:MusicPiece ;
+                nie:usageCounter ?count ;
+                nie:isStoredAs ?as .
+          ?as nie:url ?url .
+          FILTER (
+            tracker:uri-is-descendant(
+              '%(music_dir)s', nie:url(?song)
+            ) ||
+            tracker:uri-is-descendant(
+              '%(download_dir)s', nie:url(?song)
+            )
+          )
+        } ORDER BY DESC(?count) LIMIT 50
+        """.replace('\n', ' ').strip() % {
+            'music_dir': Query.MUSIC_URI,
+            'download_dir': Query.DOWNLOAD_URI
+        }
+
+        return query
+
+    @staticmethod
+    def get_never_played_songs():
+        query = """
+        SELECT ?url
+        WHERE {
+            ?song a nmm:MusicPiece ;
+                nie:isStoredAs ?as .
+            ?as nie:url ?url .
+            FILTER ( NOT EXISTS { ?song nie:usageCounter ?count .} )
+            FILTER (
+            tracker:uri-is-descendant(
+                '%(music_dir)s', nie:url(?song)
+            ) ||
+            tracker:uri-is-descendant(
+                '%(download_dir)s', nie:url(?song)
+            )
+        )
+        } ORDER BY nfo:fileLastAccessed(?song) LIMIT 50
+        """.replace('\n', ' ').strip() % {
+            'music_dir': Query.MUSIC_URI,
+            'download_dir': Query.DOWNLOAD_URI
+        }
+
+        return query
+
+    def get_recently_played_songs():
+            #TODO: or this could take comparison date as an argument so we don't need to make a date string in query.py...
+            #TODO: set time interval somewhere? A settings file? (Default is maybe 2 weeks...?)
+
+            days_difference = 7  # currently hardcoding time interval of 7 days
+            seconds_difference = days_difference * SECONDS_PER_DAY
+            compare_date = time.strftime(
+                sparql_midnight_dateTime_format, time.gmtime(time.time() - seconds_difference))
+
+            query = """
+            SELECT ?url
+            WHERE {
+                ?song a nmm:MusicPiece ;
+                    nie:isStoredAs ?as ;
+                    nfo:fileLastAccessed ?last_played .
+                ?as nie:url ?url .
+                FILTER ( ?last_played > '%(compare_date)s'^^xsd:dateTime )
+                FILTER ( EXISTS { ?song nie:usageCounter ?count .} )
+                FILTER (
+                  tracker:uri-is-descendant(
+                    '%(music_dir)s', nie:url(?song)
+                  ) ||
+                  tracker:uri-is-descendant(
+                    '%(download_dir)s', nie:url(?song)
+                  )
+                )
+            } ORDER BY DESC(?last_played) LIMIT 50
+            """.replace('\n', ' ').strip() % {
+                'compare_date': compare_date,
+                'music_dir': Query.MUSIC_URI,
+                'download_dir': Query.DOWNLOAD_URI
+            }
+
+            return query
+
+    def get_recently_added_songs():
+        #TODO: or this could take comparison date as an argument so we don't need to make a date string in query.py...
+        #TODO: set time interval somewhere? A settings file? (Default is maybe 2 weeks...?)
+
+        days_difference = 7  # currently hardcoding time interval of 7 days
+        seconds_difference = days_difference * SECONDS_PER_DAY
+        compare_date = time.strftime(
+            sparql_midnight_dateTime_format,
+            time.gmtime(time.time() - seconds_difference))
+
+        query = """
+        SELECT ?url
+        WHERE {
+            ?song a nmm:MusicPiece ;
+                nie:isStoredAs ?as ;
+                tracker:added ?added .
+            ?as nie:url ?url .
+            FILTER ( ?added > '%(compare_date)s'^^xsd:dateTime )
+            FILTER (
+              tracker:uri-is-descendant(
+                '%(music_dir)s', nie:url(?song)
+              ) ||
+              tracker:uri-is-descendant(
+                '%(download_dir)s', nie:url(?song)
+              )
+            )
+        } ORDER BY DESC(?added) LIMIT 50
+        """.replace('\n', ' ').strip() % {
+            'compare_date': compare_date,
+            'music_dir': Query.MUSIC_URI,
+            'download_dir': Query.DOWNLOAD_URI
+        }
+
+        return query
+
+    def get_favorite_songs():
+        query = """
+    SELECT ?url
+    WHERE {
+        ?song a nmm:MusicPiece ;
+            nie:isStoredAs ?as ;
+            nao:hasTag nao:predefined-tag-favorite .
+        ?as nie:url ?url .
+        FILTER (
+          tracker:uri-is-descendant(
+            '%(music_dir)s', nie:url(?song)
+          ) ||
+          tracker:uri-is-descendant(
+            '%(download_dir)s', nie:url(?song)
+          )
+        )
+    } ORDER BY DESC(tracker:added(?song))
+    """.replace('\n', ' ').strip() % {
+            'music_dir': Query.MUSIC_URI,
+            'download_dir': Query.DOWNLOAD_URI
+        }
+
         return query
 
     # Functions for search
@@ -1058,3 +1340,71 @@ class Query():
             '''.replace('\n', ' ').strip() % {'name': name}
 
         return Query.songs(query)
+
+    @staticmethod
+    def clear_playlist(playlist_id):
+        # TODO is there a way to do this with only one FILTER statement?
+
+        query = """
+    DELETE {
+        ?playlist
+            nfo:hasMediaFileListEntry ?entry .
+        ?entry
+            a rdfs:Resource .
+    }
+    WHERE {
+        ?playlist
+            a nmm:Playlist ;
+            a nfo:MediaList ;
+            nfo:hasMediaFileListEntry ?entry .
+        FILTER (
+            tracker:id(?playlist) = %(playlist_id)s
+        )
+    }
+    INSERT OR REPLACE {
+        ?playlist nfo:entryCounter '0'
+    }
+    WHERE {
+        ?playlist
+            a nmm:Playlist ;
+            a nfo:MediaList .
+        FILTER (
+            tracker:id(?playlist) = %(playlist_id)s
+        )
+    }
+        """.replace("\n", " ").strip() % {
+            'playlist_id': playlist_id
+        }
+
+        return query
+
+    def add_favorite(song_url):
+        query = """
+            INSERT {
+                ?song nao:hasTag nao:predefined-tag-favorite
+            }
+            WHERE {
+                ?song a nmm:MusicPiece .
+                FILTER ( nie:url(?song) = "%(song_url)s" )
+            }
+        """.replace("\n", " ").strip() % {
+            'song_url': song_url
+
+        }
+
+        return query
+
+    def remove_favorite(song_url):
+        query = """
+            DELETE {
+                ?song nao:hasTag nao:predefined-tag-favorite
+            }
+            WHERE {
+                ?song a nmm:MusicPiece .
+                FILTER ( nie:url(?song) = "%(song_url)s" )
+            }
+        """.replace("\n", " ").strip() % {
+            'song_url': song_url
+        }
+
+        return query
