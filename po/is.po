@@ -1,52 +1,50 @@
-# French translation for gnome-music.
-# Copyright (C) 2013 gnome-music's COPYRIGHT HOLDER
-# This file is distributed under the same license as the gnome-music package.
-# Alain Lojewski <allomervan@gmail.com>, 2013-2015.
-# Erwan Georget <dremor@dremor.info>, 2015.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
 #
+# Sveinn í Felli <sv1@fellsnet.is>, 2015.
 msgid ""
 msgstr ""
-"Project-Id-Version: gnome-music master\n"
+"Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: http://bugzilla.gnome.org/enter_bug.cgi?product=gnome-"
 "music&keywords=I18N+L10N&component=general\n"
-"POT-Creation-Date: 2015-08-26 13:27+0000\n"
-"PO-Revision-Date: 2015-08-25 22:47+0200\n"
-"Last-Translator: Erwan Georget <dremor@dremor.info>\n"
-"Language-Team: GNOME French Team <gnomefr@traduc.org>\n"
-"Language: fr\n"
+"POT-Creation-Date: 2015-09-02 07:26+0000\n"
+"PO-Revision-Date: 2015-09-08 16:20+0000\n"
+"Last-Translator: Sveinn í Felli <sv1@fellsnet.is>\n"
+"Language-Team: Icelandic <translation-team-is@lists.sourceforge.net>\n"
+"Language: is\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=2; plural=(n > 1);\n"
-"X-Generator: Poedit 1.8.4\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Lokalize 1.5\n"
 
 #: ../data/org.gnome.Music.gschema.xml.h:1
 msgid "Window size"
-msgstr "Taille de la fenêtre"
+msgstr "Gluggastærð"
 
 #: ../data/org.gnome.Music.gschema.xml.h:2
 msgid "Window size (width and height)."
-msgstr "La taille de la fenêtre (en largeur et hauteur)."
+msgstr "Breidd og hæð glugga."
 
 #: ../data/org.gnome.Music.gschema.xml.h:3
 msgid "Window position"
-msgstr "Position de la fenêtre"
+msgstr "Staðsetning glugga"
 
 #: ../data/org.gnome.Music.gschema.xml.h:4
 msgid "Window position (x and y)."
-msgstr "La position de la fenêtre (en x et y)."
+msgstr "Staðsetning glugga (x og y)."
 
 #: ../data/org.gnome.Music.gschema.xml.h:5
 msgid "Window maximized"
-msgstr "Fenêtre maximisée"
+msgstr "Gluggi hámarkaður"
 
 #: ../data/org.gnome.Music.gschema.xml.h:6
 msgid "Window maximized state."
-msgstr "État maximisé de la fenêtre."
+msgstr "Hámörkunargildi glugga."
 
 #: ../data/org.gnome.Music.gschema.xml.h:7
 msgid "Playback repeat mode"
-msgstr "Mode de lecture répétition"
+msgstr "Endurtekningarhamur afspilunar"
 
 #. Translators: Don't translate allowed values, just the description in the brackets
 #: ../data/org.gnome.Music.gschema.xml.h:9
@@ -56,94 +54,84 @@ msgid ""
 "\" (repeat current song), \"all\" (repeat playlist, no shuffle), \"shuffle"
 "\" (shuffle playlist, presumes repeat all)."
 msgstr ""
-"Valeur indiquant s'il faut répéter ou rendre aléatoire la lecture des "
-"musiques de la discothèque. Les valeurs possibles sont : « none » (aucune, "
-"la répétition et le mélange sont désactivés), « song » (répète le morceau "
-"actuel), « all » (rejoue toute la liste de lecture, sans mélange), "
-"« shuffle » (mélange la liste de lecture, en supposant de tout rejouer)."
 
 #: ../data/org.gnome.Music.gschema.xml.h:10
 msgid "Search mode"
-msgstr "Mode de recherche"
+msgstr "Leitarhamur"
 
 #: ../data/org.gnome.Music.gschema.xml.h:11
 msgid "If true, the search bar is shown."
-msgstr "Si true (vrai), la barre de recherche s'affiche. "
+msgstr ""
 
 #: ../data/org.gnome.Music.gschema.xml.h:12
 msgid "Notifications mode"
-msgstr "Mode de notifications"
+msgstr "Tilkynningahamur"
 
 #: ../data/org.gnome.Music.gschema.xml.h:13
 msgid "Enables or disables playback notifications"
-msgstr "Active ou désactive les notifications de lecture"
+msgstr ""
 
 #: ../data/org.gnome.Music.gschema.xml.h:14
 msgid "Max chars to display in track name on Artist view"
 msgstr ""
-"Nombre maximum de caractères à afficher dans le titre du morceau en mode vue "
-"par artiste"
 
 #: ../data/org.gnome.Music.gschema.xml.h:15
 msgid ""
 "This setting modifies the amount of chars for track title on Artist view "
 "before its been ellipsized. Set this to -1 to disable"
 msgstr ""
-"Ce paramètre détermine le nombre de caractères dans le titre du morceau en "
-"mode vue par artiste avant qu'il ne soit écourté. Définissez-le à -1 pour le "
-"désactiver."
 
 #: ../data/org.gnome.Music.gschema.xml.h:16
 msgid "Enable ReplayGain"
-msgstr "Activer ReplayGain"
+msgstr ""
 
 #: ../data/org.gnome.Music.gschema.xml.h:17
 msgid "Enables or disables ReplayGain for albums"
-msgstr "Active ou désactive ReplayGain pour les albums"
+msgstr ""
 
 #: ../data/org.gnome.Music.gschema.xml.h:18
 msgid "Inital state has been displayed"
-msgstr "L'état initial a été affiché"
+msgstr ""
 
 #: ../data/org.gnome.Music.gschema.xml.h:19
 msgid "Set to true when initial state has been displayed"
-msgstr "Vaut « true » (vrai) si l'état initial a été affiché"
+msgstr ""
 
 #: ../data/gnome-music.desktop.in.h:1 ../gnomemusic/application.py:55
 #: ../gnomemusic/application.py:118 ../gnomemusic/window.py:62
 #: ../data/AboutDialog.ui.in.h:1
 msgid "Music"
-msgstr "Musique"
+msgstr "Tónlist"
 
 #: ../data/gnome-music.desktop.in.h:2
 msgid "Music Player"
-msgstr "Lecteur de musique"
+msgstr "Tónlistarspilari"
 
 #: ../data/gnome-music.desktop.in.h:3 ../data/gnome-music.appdata.xml.in.h:2
 msgid "Play and organize your music collection"
-msgstr "Jouer et organiser votre discothèque"
+msgstr "Spila og sjá um tónlistarsafnið þitt"
 
 #: ../data/gnome-music.desktop.in.h:4
 msgid "Music;Player;"
-msgstr "musique;lecteur de musique;"
+msgstr "Tónlist;spilari;"
 
 #: ../data/gnome-music.appdata.xml.in.h:1
 msgid "GNOME Music"
-msgstr "GNOME Musique"
+msgstr "GNOME tónlistarspilari"
 
 #: ../data/gnome-music.appdata.xml.in.h:3
 msgid "Music is the new GNOME music playing application."
-msgstr "Musique est la nouvelle application de lecture de musique de GNOME."
+msgstr ""
 
 #: ../gnomemusic/albumArtCache.py:115 ../gnomemusic/albumArtCache.py:123
 msgid "Untitled"
-msgstr "Sans titre"
+msgstr "Ónefnt"
 
 #: ../gnomemusic/mpris.py:151 ../gnomemusic/notification.py:104
 #: ../gnomemusic/player.py:607 ../gnomemusic/view.py:582
 #: ../gnomemusic/view.py:993 ../gnomemusic/view.py:1455
 msgid "Unknown Album"
-msgstr "Album inconnu"
+msgstr "Óþekkt albúm"
 
 #: ../gnomemusic/mpris.py:167 ../gnomemusic/notification.py:102
 #: ../gnomemusic/player.py:597 ../gnomemusic/view.py:226
@@ -152,38 +140,38 @@ msgstr "Album inconnu"
 #: ../gnomemusic/view.py:1505 ../gnomemusic/widgets.py:242
 #: ../gnomemusic/widgets.py:654
 msgid "Unknown Artist"
-msgstr "Artiste inconnu"
+msgstr "Óþekktur flytjandi"
 
 #: ../gnomemusic/notification.py:93
 msgid "Not playing"
-msgstr "Pas de lecture en cours"
+msgstr "Ekki í spilun"
 
 #. TRANSLATORS: by refers to the artist, from to the album
 #: ../gnomemusic/notification.py:108
 #, python-format
 msgid "by %s, from %s"
-msgstr "par %s, sur %s"
+msgstr "eftir %s, af %s"
 
 #: ../gnomemusic/notification.py:129 ../data/PlayerToolbar.ui.h:5
 msgid "Previous"
-msgstr "Précédent"
+msgstr "Fyrra"
 
 #: ../gnomemusic/notification.py:132 ../gnomemusic/player.py:554
 msgid "Pause"
-msgstr "Pause"
+msgstr "Hlé"
 
 #: ../gnomemusic/notification.py:135 ../gnomemusic/player.py:557
 #: ../data/PlayerToolbar.ui.h:6
 msgid "Play"
-msgstr "Lecture"
+msgstr "Spila"
 
 #: ../gnomemusic/notification.py:137 ../data/PlayerToolbar.ui.h:7
 msgid "Next"
-msgstr "Suivant"
+msgstr "Næsta"
 
 #: ../gnomemusic/player.py:1090
 msgid "Unable to play the file"
-msgstr "Impossible de lire le fichier"
+msgstr "Gat ekki spilað skrána"
 
 #. TRANSLATORS: this is a button to launch a codec installer.
 #. %s will be replaced with the software installer's name, e.g.
@@ -191,12 +179,12 @@ msgstr "Impossible de lire le fichier"
 #: ../gnomemusic/player.py:1095
 #, python-format
 msgid "_Find in %s"
-msgstr "_Trouver dans %s"
+msgstr "_Finna í %s"
 
 #. TRANSLATORS: separator for a list of codecs
 #: ../gnomemusic/player.py:1105
 msgid " and "
-msgstr " and "
+msgstr " og "
 
 #. TRANSLATORS: separator for a list of codecs
 #: ../gnomemusic/player.py:1108
@@ -207,34 +195,33 @@ msgstr ", "
 #, python-format
 msgid "%s is required to play the file, but is not installed."
 msgid_plural "%s are required to play the file, but are not installed."
-msgstr[0] "%s est nécessaire pour lire le fichier, mais il n'est pas installé."
-msgstr[1] ""
-"%s sont nécessaires pour lire le fichier, mais il ne sont pas installés."
+msgstr[0] "%s er nauðsynlegt til að spila skrána, en er ekki uppsett."
+msgstr[1] "%s eru nauðsynleg til að spila skrána, en eru ekki uppsett."
 
 #. TRANSLATORS: this is a playlist name
 #: ../gnomemusic/playlists.py:52
 msgid "Most Played"
-msgstr "Les plus joués"
+msgstr "Mest spilað"
 
 #. TRANSLATORS: this is a playlist name
 #: ../gnomemusic/playlists.py:58
 msgid "Never Played"
-msgstr "Jamais joués"
+msgstr "Aldrei spilað"
 
 #. TRANSLATORS: this is a playlist name
 #: ../gnomemusic/playlists.py:64
 msgid "Recently Played"
-msgstr "Joués récemment"
+msgstr "Nýlega spilað"
 
 #. TRANSLATORS: this is a playlist name
 #: ../gnomemusic/playlists.py:70
 msgid "Recently Added"
-msgstr "Ajoutés récemment"
+msgstr "Nýlega bætt við"
 
 #. TRANSLATORS: this is a playlist name
 #: ../gnomemusic/playlists.py:76
 msgid "Favorite Songs"
-msgstr "Morceaux favoris"
+msgstr "Uppáhaldslög"
 
 #. TRANSLATORS: _("the") should be a space-separated list of all-lowercase articles
 #. (such as 'the') that should be ignored when alphabetizing artists/albums. This
@@ -242,126 +229,126 @@ msgstr "Morceaux favoris"
 #. frequently than others, most common should appear first, least common last.
 #: ../gnomemusic/query.py:86
 msgid "the a an"
-msgstr "the a an la le les"
+msgstr "the a an hin"
 
 #: ../gnomemusic/searchbar.py:62 ../gnomemusic/searchbar.py:108
 msgid "All"
-msgstr "Tout"
+msgstr "Allt"
 
 #: ../gnomemusic/searchbar.py:63
 msgid "Artist"
-msgstr "Artistes"
+msgstr "Flytjandi"
 
 #: ../gnomemusic/searchbar.py:64
 msgid "Album"
-msgstr "Albums"
+msgstr "Albúm"
 
 #: ../gnomemusic/searchbar.py:65
 msgid "Track Title"
-msgstr "Titre du morceau"
+msgstr "Heiti lags"
 
 #: ../gnomemusic/searchbar.py:109
 msgid "Local"
-msgstr "Locale"
+msgstr "Staðvært"
 
 #: ../gnomemusic/searchbar.py:219
 msgid "Sources"
-msgstr "Sources"
+msgstr "Uppruni"
 
 #: ../gnomemusic/searchbar.py:226
 msgid "Match"
-msgstr "Correspondance"
+msgstr "Samsvörun"
 
 #: ../gnomemusic/view.py:190 ../gnomemusic/widgets.py:274
 #: ../gnomemusic/widgets.py:525 ../gnomemusic/window.py:304
 #, python-format
 msgid "Selected %d item"
 msgid_plural "Selected %d items"
-msgstr[0] "%d élément est sélectionné"
-msgstr[1] "%d éléments sont sélectionnés"
+msgstr[0] "Valdi %d atriði"
+msgstr[1] "Valdi %d atriði"
 
 #: ../gnomemusic/view.py:192 ../gnomemusic/widgets.py:276
 #: ../gnomemusic/widgets.py:527 ../gnomemusic/window.py:308
 #: ../gnomemusic/window.py:320 ../data/headerbar.ui.h:3
 msgid "Click on items to select them"
-msgstr "Cliquez sur les éléments pour les sélectionner"
+msgstr "Smelltu á atriði til að velja þau"
 
 #: ../gnomemusic/view.py:286
 msgid "Music folder"
-msgstr "Dossier de musique"
+msgstr "Tónlistarmappa"
 
 #: ../gnomemusic/view.py:309
 msgid "Hey DJ"
-msgstr "Hé DJ"
+msgstr ""
 
 #: ../gnomemusic/view.py:321 ../gnomemusic/view.py:1729
 msgid "Albums"
-msgstr "Albums"
+msgstr "Albúm"
 
 #: ../gnomemusic/view.py:416 ../gnomemusic/view.py:1731
 msgid "Songs"
-msgstr "Morceaux"
+msgstr "Lög"
 
 #: ../gnomemusic/view.py:618 ../gnomemusic/view.py:1730
 msgid "Artists"
-msgstr "Artistes"
+msgstr "Flytjendur"
 
 #: ../gnomemusic/view.py:821 ../gnomemusic/view.py:1732
 msgid "Playlists"
-msgstr "Listes de lecture"
+msgstr "Spilunarlistar"
 
 #: ../gnomemusic/view.py:1177
 #, python-format
 msgid "%d Song"
 msgid_plural "%d Songs"
-msgstr[0] "%d morceau"
-msgstr[1] "%d morceaux"
+msgstr[0] "%d lag"
+msgstr[1] "%d lög"
 
 #: ../gnomemusic/view.py:1318
 msgid "Try a different search"
-msgstr "Essayez une recherche différente"
+msgstr "Reyna aðra leit"
 
 #: ../gnomemusic/widgets.py:315 ../gnomemusic/widgets.py:349
 #, python-format
 msgid "%d min"
-msgstr "%d min"
+msgstr "%d mín"
 
 #: ../gnomemusic/widgets.py:537
 msgid "All Artists"
-msgstr "Tous les artistes"
+msgstr "Allir flytjendur"
 
 #: ../gnomemusic/widgets.py:782
 msgid "New Playlist"
-msgstr "Nouvelle liste de lecture"
+msgstr "Nýr spilunarlisti"
 
 #: ../gnomemusic/window.py:250
 msgid "Empty"
-msgstr "Vide"
+msgstr "Tómt"
 
 #: ../gnomemusic/window.py:332
 msgid "Loading"
-msgstr "Chargement en cours"
+msgstr "Hleð inn"
 
 #: ../gnomemusic/window.py:350
 msgid "_Undo"
-msgstr "_Annuler"
+msgstr "_Afturkalla"
 
 #: ../gnomemusic/window.py:351
 #, python-format
 msgid "Playlist %s removed"
-msgstr "Liste de lecture %s supprimée"
+msgstr "Spilunarlisti %s fjarlægður"
 
 #: ../data/AboutDialog.ui.in.h:2
 msgid "Copyright © 2013 GNOME Music Developers"
-msgstr "Copyright © 2013 Développeurs de l'application Musique de GNOME"
+msgstr "Höfundarréttur © 2013 GNOME Music forritararnir"
 
 #: ../data/AboutDialog.ui.in.h:3
 msgid "A music player and management application for GNOME."
-msgstr "Un lecteur de musique et une application de gestion pour GNOME."
+msgstr ""
 
 #: ../data/AboutDialog.ui.in.h:4
 msgid "Visit GNOME Music website"
-msgstr "Visiter le site Web de GNOME Musique"
+msgstr "Fara á heimasíðu GNOME tónlistarspilarans"
 
 #: ../data/AboutDialog.ui.in.h:5
 msgid ""
@@ -390,120 +377,97 @@ msgid ""
 "\"Magic of the vinyl\" by Sami Pyylampi image is licensed by CC-BY-SA 2.0 "
 "https://www.flickr.com/photos/_spy_/12270839403\n"
 msgstr ""
-"GNOME Musique est un logiciel libre ; vous pouvez le redistribuer et/ou le "
-"modifier au titre des clauses de la Licence Publique Générale GNU, telle que "
-"publiée par la Free Software Foundation ; soit la version 2 de la Licence, "
-"ou (à votre discrétion) une version ultérieure quelconque.\n"
-"Ce programme est distribué dans l'espoir qu'il sera utile, mais SANS AUCUNE "
-"GARANTIE ; sans même une garantie implicite de COMMERCIABILITÉ ou DE "
-"CONFORMITÉ À UNE UTILISATION PARTICULIÈRE. Voir la Licence Publique Générale "
-"GNU pour plus de détails.\n"
-"Vous devriez avoir reçu un exemplaire de la Licence Publique Générale GNU "
-"avec ce programme ; si ce n'est pas le cas, écrivez à la Free Software "
-"Foundation Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, "
-"USA.\n"
-"Les auteurs de l'application Musique de GNOME accordent par la présente "
-"l'autorisation d'utiliser des greffons GStreamer non compatibles avec la "
-"licence GPL et de les distribuer conjointement à GStreamer et à "
-"l'application Musique de GNOME. Cette permission supplante et va au-delà des "
-"autorisations accordées par la licence GPL couvrant l'application Musique de "
-"GNOME. Si vous modifiez ce code, vous pouvez étendre cette autorisation à "
-"votre version du code, mais vous n'y êtes pas obligés. Si vous ne le "
-"souhaitez pas, veuillez supprimer cette mention d'exception de votre "
-"version.\n"
-"\n"
-"L'image « Magic of the vinyl » par Sami Pyylampi est sous licence CC-BY-SA 2.0 "
-"https://www.flickr.com/photos/_spy_/12270839403\n"
 
 #: ../data/AlbumWidget.ui.h:1
 msgid "Released"
-msgstr "Publié"
+msgstr "Útgefið"
 
 #: ../data/AlbumWidget.ui.h:2
 msgid "Running Length"
-msgstr "Durée"
+msgstr "Spilunartími"
 
 #: ../data/app-menu.ui.h:1
 msgid "_Help"
-msgstr "Aid_e"
+msgstr "_Hjálp"
 
 #: ../data/app-menu.ui.h:2
 msgid "_About"
-msgstr "À _propos"
+msgstr "_Um"
 
 #: ../data/app-menu.ui.h:3
 msgid "_Quit"
-msgstr "_Quitter"
+msgstr "_Hætta"
 
 #: ../data/PlayerToolbar.ui.h:1
 msgid "Shuffle"
-msgstr "Mélanger"
+msgstr "Stokka"
 
 #: ../data/PlayerToolbar.ui.h:2
 msgid "Repeat All"
-msgstr "Tout répéter"
+msgstr "Endurtaka allt"
 
 #: ../data/PlayerToolbar.ui.h:3
 msgid "Repeat Song"
-msgstr "Répéter le morceau"
+msgstr "Endurtaka lag"
 
 #: ../data/PlayerToolbar.ui.h:4
 msgid "Shuffle/Repeat Off"
-msgstr "Désactiver mélanger/répéter"
+msgstr "Stokkun/Endurtekning af"
 
 #: ../data/NoMusic.ui.h:1
 msgid "No music found"
-msgstr "Aucune musique trouvée"
+msgstr "Engin tónlist fannst"
 
 #: ../data/NoMusic.ui.h:3
 #, no-c-format
 msgid "The contents of your %s will appear here."
-msgstr "Le contenu de votre %s s'affichera ici."
+msgstr "Innihald %s birtist hér."
 
 #: ../data/headerbar.ui.h:1
 msgid "Select All"
-msgstr "Tout sélectionner"
+msgstr "Velja allt"
 
 #: ../data/headerbar.ui.h:2
 msgid "Select None"
-msgstr "Ne rien sélectionner"
+msgstr "Velja ekkert"
 
 #: ../data/headerbar.ui.h:4
 msgid "Search"
-msgstr "Rechercher"
+msgstr "Leita"
 
 #: ../data/headerbar.ui.h:5 ../data/PlaylistDialog.ui.h:3
 msgid "Select"
-msgstr "Sélectionner"
+msgstr "Velja"
 
 #: ../data/headerbar.ui.h:6 ../data/PlaylistDialog.ui.h:2
 msgid "Cancel"
-msgstr "Annuler"
+msgstr "Hætta við"
 
 #: ../data/headerbar.ui.h:7
 msgid "Back"
-msgstr "Retour"
+msgstr "Til baka"
 
 #: ../data/SelectionToolbar.ui.h:1
 msgid "Add to Playlist"
-msgstr "Ajouter à la liste de lecture"
+msgstr "Bæta við spilunarlista"
 
 #: ../data/SelectionToolbar.ui.h:2
 msgid "Remove from Playlist"
-msgstr "Supprimer de la liste de lecture"
+msgstr "Fjarlægja af spilunarlistanum"
 
 #: ../data/PlaylistControls.ui.h:1
 msgid "_Play"
-msgstr "_Lire"
+msgstr "S_pila"
 
 #: ../data/PlaylistControls.ui.h:2
 msgid "_Delete"
-msgstr "_Supprimer"
+msgstr "_Eyða"
 
 #: ../data/PlaylistControls.ui.h:3
 msgid "Playlist Name"
-msgstr "Nom de la liste de lecture"
+msgstr "Heiti spilunarlista"
 
 #: ../data/PlaylistDialog.ui.h:1
 msgid "Select Playlist"
-msgstr "Sélectionner la liste de lecture"
+msgstr "Veldu spilunarlista"
+

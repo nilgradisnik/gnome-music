@@ -28,8 +28,7 @@
 # delete this exception statement from your version.
 
 
-from gi.repository import Gtk, GObject, GLib
-from gettext import gettext as _
+from gi.repository import Gtk, GObject
 
 from gnomemusic.searchbar import Searchbar, DropDown
 
@@ -47,10 +46,12 @@ class ToolbarState:
 class Toolbar(GObject.GObject):
 
     __gsignals__ = {
-        'state-changed': (GObject.SIGNAL_RUN_FIRST, None, ()),
-        'selection-mode-changed': (GObject.SIGNAL_RUN_FIRST, None, ()),
+        'selection-mode-changed': (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
     _selectionMode = False
+
+    def __repr__(self):
+        return '<Toolbar>'
 
     @log
     def __init__(self):
@@ -104,17 +105,25 @@ class Toolbar(GObject.GObject):
 
     @log
     def set_selection_mode(self, selectionMode):
+        self._selection_handler = None
         self._selectionMode = selectionMode
         if selectionMode:
             self._select_button.hide()
             self._cancel_button.show()
             self.header_bar.get_style_context().add_class('selection-mode')
             self._cancel_button.get_style_context().remove_class('selection-mode')
+            view = self._stack_switcher.get_stack().get_visible_child()
+            self._selection_handler = view.view.connect(
+                'view-selection-changed', view._on_view_selection_changed)
         else:
             self.header_bar.get_style_context().remove_class('selection-mode')
             self._select_button.set_active(False)
             self._select_button.show()
             self._cancel_button.hide()
+            view = self._stack_switcher.get_stack().get_visible_child()
+            if self._selection_handler:
+                view.view.disconnect(self._selection_handler)
+            self._selection_handler = None
         self.emit('selection-mode-changed')
         self._update()
 
@@ -128,7 +137,6 @@ class Toolbar(GObject.GObject):
     def set_state(self, state, btn=None):
         self._state = state
         self._update()
-        self.emit('state-changed')
 
     @log
     def _update(self):

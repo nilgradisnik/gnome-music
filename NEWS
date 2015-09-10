@@ -1,3 +1,76 @@
+Overview of changes in 3.17.91
+=============================
+
+Bugs fixed:
+ 738516 Tags in search textbox are broken
+
+Translations updated:
+ Chinese (Taiwan)
+ French
+ Galician s
+ German
+ Greek
+ Indonesian
+ Italian
+ Polish
+ Update Catalan transation
+
+
+Overview of changes in 3.17.90
+=============================
+
+Bugs fixed:
+ 744658 Playlists sidebar - border is cut off
+ 753488 Clicking on artist on search results does nothing
+
+Translations updated:
+ Brazilian Portuguese
+ Czech
+ Fix Portuguese desktop keywords
+ Friulian
+ Norwegian bokmål
+ Turkish
+
+
+Overview of changes in 3.17.4
+=============================
+
+Bugs fixed:
+ 705070 Last.fm/libre.fm integration
+ 747233 Remove "All Artists"
+ 752591 Convert margin_right to margin_end
+ 752592 Trivial code formatting cleanups
+
+Several deprecations were removed
+More performance improvements
+Translations updated
+
+
+Overview of changes in 3.17.3
+=============================
+
+Bugs fixed:
+ 743362 Give a nicer welcome
+ 744464 No results screen for Search
+ 747749 Cant't play favourite song in Album view
+ 748375 #!/bin/bash in autogen.sh
+ 749981 Tracks outside Music and Downloads are displayed in playlists
+
+Translations updated:
+ Added Occitan
+ Dutch  316
+ Esperanto
+ Fix to Catalan
+ Greek
+ Norwegian bokmål
+ Slovak
+ Spanish
+ Tajik
+ Turkish
+ l10n: Update Japanese
+ update zh_CN
+
+
 Overview of changes in 3.16.0
 =============================
 

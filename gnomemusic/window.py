@@ -29,9 +29,9 @@
 # code, but you are not obligated to do so.  If you do not wish to do so,
 # delete this exception statement from your version.
 
-
-from gi.repository import Gtk, Gdk, Gio, GLib
-from gi.repository import Gd
+import gi
+gi.require_version('Gd', '1.0')
+from gi.repository import Gtk, Gdk, Gio, GLib, Gd
 from gettext import gettext as _, ngettext
 
 from gnomemusic import TrackerWrapper
@@ -52,6 +52,9 @@ playlist = Playlists.get_default()
 
 class Window(Gtk.ApplicationWindow):
 
+    def __repr__(self):
+        return '<Window>'
+
     @log
     def __init__(self, app):
         Gtk.ApplicationWindow.__init__(self,
@@ -69,6 +72,7 @@ class Window(Gtk.ApplicationWindow):
         self.add_action(selectNone)
         self.set_size_request(200, 100)
         self.set_icon_name('gnome-music')
+        self.notification_handler = None
 
         self.prev_view = None
         self.curr_view = None
@@ -88,22 +92,9 @@ class Window(Gtk.ApplicationWindow):
 
         self._setup_view()
 
+        self.window_size_update_timeout = None
         self.connect("window-state-event", self._on_window_state_event)
-        self.configure_event_handler = self.connect("configure-event", self._on_configure_event)
-
-        self.proxy = Gio.DBusProxy.new_sync(Gio.bus_get_sync(Gio.BusType.SESSION, None),
-                                            Gio.DBusProxyFlags.NONE,
-                                            None,
-                                            'org.gnome.SettingsDaemon',
-                                            '/org/gnome/SettingsDaemon/MediaKeys',
-                                            'org.gnome.SettingsDaemon.MediaKeys',
-                                            None)
-        self._grab_media_player_keys()
-        try:
-            self.proxy.connect('g-signal', self._handle_media_keys)
-        except GLib.GError:
-            # We cannot grab media keys if no settings daemon is running
-            pass
+        self.connect("configure-event", self._on_configure_event)
         grilo.connect('changes-pending', self._on_changes_pending)
 
     @log
@@ -132,8 +123,8 @@ class Window(Gtk.ApplicationWindow):
                 self.toolbar.show_stack()
 
     def _on_configure_event(self, widget, event):
-        with self.handler_block(self.configure_event_handler):
-            GLib.idle_add(self.store_window_size_and_position, widget, priority=GLib.PRIORITY_LOW)
+        if self.window_size_update_timeout is None:
+            self.window_size_update_timeout = GLib.timeout_add(500, self.store_window_size_and_position, widget)
 
     @log
     def store_window_size_and_position(self, widget):
@@ -142,6 +133,9 @@ class Window(Gtk.ApplicationWindow):
 
         position = widget.get_position()
         self.settings.set_value('window-position', GLib.Variant('ai', [position[0], position[1]]))
+        GLib.source_remove(self.window_size_update_timeout)
+        self.window_size_update_timeout = None
+        return False
 
     @log
     def _on_window_state_event(self, widget, event):
@@ -149,19 +143,27 @@ class Window(Gtk.ApplicationWindow):
 
     @log
     def _grab_media_player_keys(self):
-        try:
-            self.proxy.call_sync('GrabMediaPlayerKeys',
-                                 GLib.Variant('(su)', ('Music', 0)),
-                                 Gio.DBusCallFlags.NONE,
-                                 -1,
-                                 None)
-        except GLib.GError:
-            # We cannot grab media keys if no settings daemon is running
-            pass
+        self.proxy = Gio.DBusProxy.new_sync(Gio.bus_get_sync(Gio.BusType.SESSION, None),
+                                            Gio.DBusProxyFlags.NONE,
+                                            None,
+                                            'org.gnome.SettingsDaemon',
+                                            '/org/gnome/SettingsDaemon/MediaKeys',
+                                            'org.gnome.SettingsDaemon.MediaKeys',
+                                            None)
+        self.proxy.call_sync('GrabMediaPlayerKeys',
+                             GLib.Variant('(su)', ('Music', 0)),
+                             Gio.DBusCallFlags.NONE,
+                             -1,
+                             None)
+        self.proxy.connect('g-signal', self._handle_media_keys)
 
     @log
     def _windows_focus_cb(self, window, event):
-        self._grab_media_player_keys()
+        try:
+            self._grab_media_player_keys()
+        except GLib.GError:
+            # We cannot grab media keys if no settings daemon is running
+            pass
 
     @log
     def _handle_media_keys(self, proxy, sender, signal, parameters):
@@ -201,13 +203,14 @@ class Window(Gtk.ApplicationWindow):
         count = 0
         cursor = None
 
+        Query()
         if Query.music_folder and Query.download_folder:
             try:
                 cursor = tracker.query(Query.all_songs_count(), None)
                 if cursor is not None and cursor.next(None):
                     count = cursor.get_integer(0)
             except Exception as e:
-                logger.error("Tracker query crashed: %s" % e)
+                logger.error("Tracker query crashed: %s", e)
                 count = 0
 
             if count > 0:
@@ -236,13 +239,21 @@ class Window(Gtk.ApplicationWindow):
 
     @log
     def _switch_to_empty_view(self):
-        self.views.append(Views.Empty(self, self.player))
+        did_initial_state = self.settings.get_boolean('did-initial-state')
+        view_class = None
+        if did_initial_state:
+            view_class = Views.Empty
+        else:
+            view_class = Views.InitialState
+        self.views.append(view_class(self, self.player))
+
         self._stack.add_titled(self.views[0], _("Empty"), _("Empty"))
         self.toolbar._search_button.set_sensitive(False)
         self.toolbar._select_button.set_sensitive(False)
 
     @log
     def _switch_to_player_view(self):
+        self.settings.set_boolean('did-initial-state', True)
         self._on_notify_model_id = self._stack.connect('notify::visible-child', self._on_notify_mode)
         self.connect('destroy', self._notify_mode_disconnect)
         self._key_press_event_id = self.connect('key_press_event', self._on_key_press)
@@ -252,6 +263,7 @@ class Window(Gtk.ApplicationWindow):
         self.views.append(Views.Songs(self, self.player))
         self.views.append(Views.Playlist(self, self.player))
         self.views.append(Views.Search(self, self.player))
+        self.views.append(Views.EmptySearch(self, self.player))
 
         for i in self.views:
             if i.title:
@@ -312,7 +324,7 @@ class Window(Gtk.ApplicationWindow):
     def _init_loading_notification(self):
         self.notification = Gd.Notification()
         self.notification.set_timeout(5)
-        grid = Gtk.Grid(valign=Gtk.Align.CENTER, margin_right=8)
+        grid = Gtk.Grid(valign=Gtk.Align.CENTER, margin_end=8)
         grid.set_column_spacing(8)
         spinner = Gtk.Spinner()
         spinner.start()
@@ -320,8 +332,11 @@ class Window(Gtk.ApplicationWindow):
         label = Gtk.Label.new(_("Loading"))
         grid.add(label)
         self.notification.add(grid)
-        self.notification.show_all()
-        GLib.timeout_add(1000, self._overlay.add_overlay, self.notification)
+        self._overlay.add_overlay(self.notification)
+        if self.notification_handler:
+            GLib.Source.remove(self.notification_handler)
+            self.notification_handler = None
+        self.notification_handler = GLib.timeout_add(1000, self.notification.show_all)
 
     @log
     def _init_playlist_removal_notification(self):
@@ -418,8 +433,14 @@ class Window(Gtk.ApplicationWindow):
            self.curr_view == self.views[3]:
             self.curr_view.stack.set_visible_child_name('dummy')
             self.curr_view.stack.set_visible_child_name('sidebar')
-        if self.curr_view != self.views[4]:
+        if self.curr_view != self.views[4] and self.curr_view != self.views[5]:
             self.toolbar.searchbar.show_bar(False)
+
+        # Toggle the selection button for the EmptySearch view
+        if self.curr_view == self.views[5] or \
+           self.prev_view == self.views[5]:
+            self.toolbar._select_button.set_sensitive(
+                not self.toolbar._select_button.get_sensitive())
 
     @log
     def _toggle_view(self, btn, i):
@@ -429,9 +450,11 @@ class Window(Gtk.ApplicationWindow):
     def _on_search_toggled(self, button, data=None):
         self.toolbar.searchbar.show_bar(button.get_active(),
                                         self.curr_view != self.views[4])
-        if not button.get_active() and self.curr_view == self.views[4] and \
-           self.toolbar._state == ToolbarState.MAIN:
-            self._stack.set_visible_child(self.prev_view)
+        if (not button.get_active() and
+                (self.curr_view == self.views[4] or self.curr_view == self.views[5]) and
+                self.toolbar._state == ToolbarState.MAIN):
+            # We should get back to the view before the search
+            self._stack.set_visible_child(self.views[4].previous_view)
             if self.toolbar._selectionMode:
                 self.toolbar.set_selection_mode(False)
 

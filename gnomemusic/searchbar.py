@@ -40,6 +40,10 @@ class BaseModelColumns():
 
 
 class BaseManager:
+
+    def __repr__(self):
+        return '<BaseManager>'
+
     @log
     def __init__(self, id, label, entry):
         self.id = id
@@ -81,7 +85,8 @@ class BaseManager:
 
             # If selected values has first entry then it is a default value
             # No need to set the tag there
-            if selected_value[BaseModelColumns.ID] != self.values[1][BaseModelColumns.ID]:
+            if (selected_value[BaseModelColumns.ID] != 'search_all' and
+                    selected_value[BaseModelColumns.ID] != 'grl-tracker-source'):
                 self.entry.add_tag(self.tag)
                 self.tag.set_label(selected_value[BaseModelColumns.NAME])
             else:
@@ -94,6 +99,9 @@ class BaseManager:
 
 class SourceManager(BaseManager):
 
+    def __repr__(self):
+        return '<SourceManager>'
+
     @log
     def __init__(self, id, label, entry):
         super(SourceManager, self).__init__(id, label, entry)
@@ -105,6 +113,8 @@ class SourceManager(BaseManager):
     def fill_in_values(self, model):
         self.model = model
         super(SourceManager, self).fill_in_values(model)
+
+        super(SourceManager, self).set_active('grl-tracker-source')
 
     @log
     def add_new_source(self, klass, source):
@@ -124,6 +134,10 @@ class SourceManager(BaseManager):
 
 
 class FilterView():
+
+    def __repr__(self):
+        return '<FilterView>'
+
     @log
     def __init__(self, manager, dropdown):
         self.manager = manager
@@ -186,6 +200,10 @@ class FilterView():
 
 
 class DropDown(Gtk.Revealer):
+
+    def __repr__(self):
+        return '<DropDown>'
+
     @log
     def __init__(self):
         Gtk.Revealer.__init__(self, halign=Gtk.Align.CENTER, valign=Gtk.Align.START)
@@ -226,6 +244,9 @@ class DropDown(Gtk.Revealer):
 
 
 class Searchbar(Gtk.Revealer):
+
+    def __repr__(self):
+        return '<Searchbar>'
 
     @log
     def __init__(self, stack_switcher, search_button, dropdown):

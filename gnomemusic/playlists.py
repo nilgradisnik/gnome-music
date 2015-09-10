@@ -41,40 +41,47 @@ logger = logging.getLogger(__name__)
 
 
 class StaticPlaylists:
+
+    def __repr__(self):
+        return '<StaticPlaylists>'
+
     class MostPlayed:
         ID = None
-        QUERY = Query.get_most_played_songs()
         TAG_TEXT = "MOST_PLAYED"
         # TRANSLATORS: this is a playlist name
         TITLE = _("Most Played")
 
     class NeverPlayed:
         ID = None
-        QUERY = Query.get_never_played_songs()
         TAG_TEXT = "NEVER_PLAYED"
         # TRANSLATORS: this is a playlist name
         TITLE = _("Never Played")
 
     class RecentlyPlayed:
         ID = None
-        QUERY = Query.get_recently_played_songs()
         TAG_TEXT = "RECENTLY_PLAYED"
         # TRANSLATORS: this is a playlist name
         TITLE = _("Recently Played")
 
     class RecentlyAdded:
         ID = None
-        QUERY = Query.get_recently_added_songs()
         TAG_TEXT = "RECENTLY_ADDED"
         # TRANSLATORS: this is a playlist name
         TITLE = _("Recently Added")
 
     class Favorites:
         ID = None
-        QUERY = Query.get_favorite_songs()
         TAG_TEXT = "FAVORITES"
         # TRANSLATORS: this is a playlist name
         TITLE = _("Favorite Songs")
+
+    def __init__(self):
+        Query()
+        self.MostPlayed.QUERY = Query.get_most_played_songs()
+        self.NeverPlayed.QUERY = Query.get_never_played_songs()
+        self.RecentlyPlayed.QUERY = Query.get_recently_played_songs()
+        self.RecentlyAdded.QUERY = Query.get_recently_added_songs()
+        self.Favorites.QUERY = Query.get_favorite_songs()
 
     @classmethod
     def get_protected_ids(self):
@@ -84,18 +91,21 @@ class StaticPlaylists:
 
 class Playlists(GObject.GObject):
     __gsignals__ = {
-        'playlist-created': (GObject.SIGNAL_RUN_FIRST, None, (Grl.Media,)),
-        'playlist-deleted': (GObject.SIGNAL_RUN_FIRST, None, (Grl.Media,)),
-        'playlist-updated': (GObject.SIGNAL_RUN_FIRST, None, (int,)),
+        'playlist-created': (GObject.SignalFlags.RUN_FIRST, None, (Grl.Media,)),
+        'playlist-deleted': (GObject.SignalFlags.RUN_FIRST, None, (Grl.Media,)),
+        'playlist-updated': (GObject.SignalFlags.RUN_FIRST, None, (int,)),
         'song-added-to-playlist': (
-            GObject.SIGNAL_RUN_FIRST, None, (Grl.Media, Grl.Media)
+            GObject.SignalFlags.RUN_FIRST, None, (Grl.Media, Grl.Media)
         ),
         'song-removed-from-playlist': (
-            GObject.SIGNAL_RUN_FIRST, None, (Grl.Media, Grl.Media)
+            GObject.SignalFlags.RUN_FIRST, None, (Grl.Media, Grl.Media)
         ),
     }
     instance = None
     tracker = None
+
+    def __repr__(self):
+        return '<Playlists>'
 
     @classmethod
     def get_default(self, tracker=None):
@@ -109,6 +119,7 @@ class Playlists(GObject.GObject):
     def __init__(self):
         GObject.GObject.__init__(self)
         self.tracker = TrackerWrapper().tracker
+        StaticPlaylists()
 
     @log
     def fetch_or_create_static_playlists(self):
@@ -135,18 +146,18 @@ class Playlists(GObject.GObject):
     @log
     def clear_playlist_with_id(self, playlist_id):
         query = Query.clear_playlist_with_id(playlist_id)
-        self.tracker.update(query, GLib.PRIORITY_DEFAULT, None)
+        self.tracker.update(query, GLib.PRIORITY_LOW, None)
 
     @log
     def update_playcount(self, song_url):
         query = Query.update_playcount(song_url)
-        self.tracker.update(query, GLib.PRIORITY_DEFAULT, None)
+        self.tracker.update(query, GLib.PRIORITY_LOW, None)
 
     @log
     def update_last_played(self, song_url):
         cur_time = time.strftime(sparql_dateTime_format, time.gmtime())
         query = Query.update_last_played(song_url, cur_time)
-        self.tracker.update(query, GLib.PRIORITY_DEFAULT, None)
+        self.tracker.update(query, GLib.PRIORITY_LOW, None)
 
     @log
     def update_static_playlist(self, playlist):
@@ -166,7 +177,7 @@ class Playlists(GObject.GObject):
             uri = cursor.get_string(0)[0]
             final_query += Query.add_song_to_playlist(playlist.ID, uri)
 
-        self.tracker.update_blank_async(final_query, GLib.PRIORITY_DEFAULT,
+        self.tracker.update_blank_async(final_query, GLib.PRIORITY_LOW,
                                         None, None, None)
 
         # tell system we updated the playlist so playlist is reloaded
@@ -182,10 +193,10 @@ class Playlists(GObject.GObject):
 
     @log
     def create_playlist_and_return_id(self, title, tag_text):
-        self.tracker.update_blank(Query.create_tag(tag_text), GLib.PRIORITY_DEFAULT, None)
+        self.tracker.update_blank(Query.create_tag(tag_text), GLib.PRIORITY_LOW, None)
 
         data = self.tracker.update_blank(
-            Query.create_playlist_with_tag(title, tag_text), GLib.PRIORITY_DEFAULT,
+            Query.create_playlist_with_tag(title, tag_text), GLib.PRIORITY_LOW,
             None)
         playlist_urn = data.get_child_value(0).get_child_value(0).\
             get_child_value(0).get_child_value(1).get_string()
@@ -218,7 +229,7 @@ class Playlists(GObject.GObject):
             )
 
         self.tracker.update_blank_async(
-            Query.create_playlist(title), GLib.PRIORITY_DEFAULT,
+            Query.create_playlist(title), GLib.PRIORITY_LOW,
             None, update_callback, None
         )
 
@@ -229,7 +240,7 @@ class Playlists(GObject.GObject):
             self.emit('playlist-deleted', item)
 
         self.tracker.update_async(
-            Query.delete_playlist(item.get_id()), GLib.PRIORITY_DEFAULT,
+            Query.delete_playlist(item.get_id()), GLib.PRIORITY_LOW,
             None, update_callback, None
         )
 
@@ -261,7 +272,7 @@ class Playlists(GObject.GObject):
                 continue
             self.tracker.update_blank_async(
                 Query.add_song_to_playlist(playlist.get_id(), uri),
-                GLib.PRIORITY_DEFAULT,
+                GLib.PRIORITY_LOW,
                 None, update_callback, None
             )
 
@@ -276,6 +287,6 @@ class Playlists(GObject.GObject):
                 Query.remove_song_from_playlist(
                     playlist.get_id(), item.get_id()
                 ),
-                GLib.PRIORITY_DEFAULT,
+                GLib.PRIORITY_LOW,
                 None, update_callback, item
             )

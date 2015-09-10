@@ -24,6 +24,9 @@
 # modify this code, you may extend this exception to your version of the
 # code, but you are not obligated to do so.  If you do not wish to do so,
 # delete this exception statement from your version.
+
+import gi
+gi.require_version('Grl', '0.2')
 from gi.repository import GLib, GObject
 from gnomemusic.query import Query
 from gnomemusic import log, TrackerWrapper
@@ -37,9 +40,9 @@ logger = logging.getLogger(__name__)
 class Grilo(GObject.GObject):
 
     __gsignals__ = {
-        'ready': (GObject.SIGNAL_RUN_FIRST, None, ()),
-        'changes-pending': (GObject.SIGNAL_RUN_FIRST, None, ()),
-        'new-source-added': (GObject.SIGNAL_RUN_FIRST, None, (Grl.Source, ))
+        'ready': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'changes-pending': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'new-source-added': (GObject.SignalFlags.RUN_FIRST, None, (Grl.Source, ))
     }
 
     METADATA_KEYS = [
@@ -58,6 +61,9 @@ class Grilo(GObject.GObject):
 
     CHANGED_MEDIA_MAX_ITEMS = 500
     CHANGED_MEDIA_SIGNAL_TIMEOUT = 2000
+
+    def __repr__(self):
+        return '<Grilo>'
 
     @log
     def __init__(self):
@@ -80,6 +86,7 @@ class Grilo(GObject.GObject):
         self.changed_media_ids = []
         self.pending_event_id = 0
         self.changes_pending = {'Albums': False, 'Artists': False, 'Songs': False}
+        self.pending_changed_medias = []
 
         self.registry = Grl.Registry.get_default()
 
@@ -96,6 +103,12 @@ class Grilo(GObject.GObject):
             logger.error('Failed to load plugins.')
         if self.tracker is not None:
             logger.debug("tracker found")
+
+    def _rate_limited_content_changed(self, mediaSource, changedMedias, changeType, locationUnknown):
+        [self.pending_changed_medias.append(media) for media in changedMedias]
+        if self.content_changed_timeout is None:
+            self.content_changed_timeout = GLib.timeout_add(
+                500, self._on_content_changed, mediaSource, self.pending_changed_medias, changeType, locationUnknown)
 
     @log
     def _on_content_changed(self, mediaSource, changedMedias, changeType, locationUnknown):
@@ -117,12 +130,17 @@ class Grilo(GObject.GObject):
                         try:
                             self.changed_media_ids.append(media.get_id())
                         except Exception as e:
-                            logger.warn("Skipping %s" % media)
+                            logger.warn("Skipping %s", media)
 
                 if self.changed_media_ids == []:
-                    return
+                    self.pending_changed_medias = []
+                    if self.content_changed_timeout is not None:
+                        GLib.source_remove(self.content_changed_timeout)
+                        self.content_changed_timeout = None
+                    return False
+
                 self.changed_media_ids = list(set(self.changed_media_ids))
-                logger.debug("Changed medias: %s" % self.changed_media_ids)
+                logger.debug("Changed medias: %s", self.changed_media_ids)
 
                 if len(self.changed_media_ids) >= self.CHANGED_MEDIA_MAX_ITEMS:
                     self.emit_change_signal()
@@ -132,7 +150,13 @@ class Grilo(GObject.GObject):
                         self.pending_event_id = 0
                     self.pending_event_id = GLib.timeout_add(self.CHANGED_MEDIA_SIGNAL_TIMEOUT, self.emit_change_signal)
         except Exception as e:
-            logger.warn("Exception in _on_content_changed: %s" % e)
+            logger.warn("Exception in _on_content_changed: %s", e)
+        finally:
+            self.pending_changed_medias = []
+            if self.content_changed_timeout is not None:
+                GLib.source_remove(self.content_changed_timeout)
+                self.content_changed_timeout = None
+            return False
 
     @log
     def emit_change_signal(self):
@@ -147,7 +171,7 @@ class Grilo(GObject.GObject):
     @log
     def _on_source_added(self, pluginRegistry, mediaSource):
         id = mediaSource.get_id()
-        logger.debug("new grilo source %s was added" % id)
+        logger.debug("new grilo source %s was added", id)
         try:
             ops = mediaSource.supported_operations()
 
@@ -161,22 +185,23 @@ class Grilo(GObject.GObject):
                     if self.tracker is not None:
                         self.emit('ready')
                         self.tracker.notify_change_start()
+                        self.content_changed_timeout = None
                         self.notification_handler = self.tracker.connect(
-                            'content-changed', self._on_content_changed)
+                            'content-changed', self._rate_limited_content_changed)
 
             elif (id.startswith('grl-upnp')):
-                logger.debug("found upnp source %s" % id)
+                logger.debug("found upnp source %s", id)
                 self.sources[id] = mediaSource
                 self.emit('new-source-added', mediaSource)
 
             elif (id not in self.blacklist) and (ops & Grl.SupportedOps.SEARCH) and \
                  (mediaSource.get_supported_media() & Grl.MediaType.AUDIO):
-                logger.debug("source %s is searchable" % id)
+                logger.debug("source %s is searchable", id)
                 self.sources[id] = mediaSource
                 self.emit('new-source-added', mediaSource)
 
         except Exception as e:
-            logger.debug("Source %s: exception %s" % (id, e))
+            logger.debug("Source %s: exception %s", id, e)
 
     @log
     def _on_source_removed(self, pluginRegistry, mediaSource):
@@ -242,9 +267,15 @@ class Grilo(GObject.GObject):
     @log
     def search(self, q, callback, data=None):
         options = self.options.copy()
+        self._search_callback_counter = 0
 
         @log
         def _search_callback(source, param, item, remaining, data, error):
+            callback(source, param, item, remaining, data)
+            self._search_callback_counter += 1
+
+        @log
+        def _multiple_search_callback(source, param, item, remaining, data, error):
             callback(source, param, item, remaining, data)
 
         if self.search_source:
@@ -256,7 +287,7 @@ class Grilo(GObject.GObject):
             Grl.multiple_search([self.sources[key] for key in self.sources
                                  if key != 'grl-tracker-source'],
                                 q, self.METADATA_KEYS, options,
-                                _search_callback, data)
+                                _multiple_search_callback, data)
 
     @log
     def get_album_art_for_item(self, item, callback, data=None):

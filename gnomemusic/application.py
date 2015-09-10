@@ -30,7 +30,8 @@
 # code, but you are not obligated to do so.  If you do not wish to do so,
 # delete this exception statement from your version.
 
-
+import gi
+gi.require_version('Notify', '0.7')
 from gi.repository import Gtk, Gio, GLib, Gdk, Notify
 from gettext import gettext as _
 from gnomemusic.window import Window
@@ -43,6 +44,10 @@ logger = logging.getLogger(__name__)
 
 
 class Application(Gtk.Application):
+
+    def __repr__(self):
+        return '<Application>'
+
     @log
     def __init__(self):
         Gtk.Application.__init__(self,

@@ -34,6 +34,10 @@
 from gi.repository import GIRepository
 GIRepository.Repository.prepend_search_path('libgd')
 
+import gi
+gi.require_version('Gst', '1.0')
+gi.require_version('GstAudio', '1.0')
+gi.require_version('GstPbutils', '1.0')
 from gi.repository import Gtk, Gdk, GLib, Gio, GObject, Gst, GstAudio, GstPbutils
 from gettext import gettext as _, ngettext
 from random import randint
@@ -41,6 +45,11 @@ from collections import deque
 from gnomemusic.albumArtCache import AlbumArtCache
 from gnomemusic.playlists import Playlists
 playlists = Playlists.get_default()
+
+from hashlib import md5
+import requests
+import time
+from threading import Thread
 
 from gnomemusic import log
 import logging
@@ -74,18 +83,21 @@ class Player(GObject.GObject):
     shuffleHistory = deque(maxlen=10)
 
     __gsignals__ = {
-        'playing-changed': (GObject.SIGNAL_RUN_FIRST, None, ()),
-        'playlist-changed': (GObject.SIGNAL_RUN_FIRST, None, ()),
-        'playlist-item-changed': (GObject.SIGNAL_RUN_FIRST, None, (Gtk.TreeModel, Gtk.TreeIter)),
-        'current-changed': (GObject.SIGNAL_RUN_FIRST, None, ()),
-        'playback-status-changed': (GObject.SIGNAL_RUN_FIRST, None, ()),
-        'repeat-mode-changed': (GObject.SIGNAL_RUN_FIRST, None, ()),
-        'volume-changed': (GObject.SIGNAL_RUN_FIRST, None, ()),
-        'prev-next-invalidated': (GObject.SIGNAL_RUN_FIRST, None, ()),
-        'seeked': (GObject.SIGNAL_RUN_FIRST, None, (int,)),
-        'thumbnail-updated': (GObject.SIGNAL_RUN_FIRST, None, (str,)),
+        'playing-changed': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'playlist-changed': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'playlist-item-changed': (GObject.SignalFlags.RUN_FIRST, None, (Gtk.TreeModel, Gtk.TreeIter)),
+        'current-changed': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'playback-status-changed': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'repeat-mode-changed': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'volume-changed': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'prev-next-invalidated': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'seeked': (GObject.SignalFlags.RUN_FIRST, None, (int,)),
+        'thumbnail-updated': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         'lastfm-scrobble': (GObject.SIGNAL_RUN_FIRST, None, (object,)),
     }
+
+    def __repr__(self):
+        return '<Player>'
 
     @log
     def __init__(self, parent_window):
@@ -132,6 +144,26 @@ class Player(GObject.GObject):
         self.playlist_insert_handler = 0
         self.playlist_delete_handler = 0
 
+        self._check_last_fm()
+
+    @log
+    def _check_last_fm(self):
+        try:
+            self.last_fm = None
+            gi.require_version('Goa', '1.0')
+            from gi.repository import Goa
+            client = Goa.Client.new_sync(None)
+            accounts = client.get_accounts()
+
+            for obj in accounts:
+                account = obj.get_account()
+                if account.props.provider_name == "Last.fm":
+                    self.last_fm = obj.get_oauth2_based()
+                    return
+        except Exception as e:
+            logger.info("Error reading Last.fm credentials: %s" % str(e))
+            self.last_fm = None
+
     @log
     def _on_replaygain_setting_changed(self, settings, value):
         self.replaygain = settings.get_value('replaygain') is not None
@@ -175,11 +207,11 @@ class Player(GObject.GObject):
     def discover_item(self, item, callback, data=None):
         url = item.get_url()
         if not url:
-            logger.warn("The item %s doesn't have a URL set" % item)
+            logger.warn("The item %s doesn't have a URL set", item)
             return
 
         if not url.startswith("file://"):
-            logger.debug("Skipping discovery of %s as not a local file" % url)
+            logger.debug("Skipping discovery of %s as not a local file", url)
             return
 
         obj = (callback, data)
@@ -231,8 +263,8 @@ class Player(GObject.GObject):
         install_ctx = GstPbutils.InstallPluginsContext.new()
 
         if self._gst_plugins_base_check_version(1, 5, 0):
-            install_ctx.set_desktop_id('gnome-music.desktop');
-            install_ctx.set_confirm_search(confirm_search);
+            install_ctx.set_desktop_id('gnome-music.desktop')
+            install_ctx.set_confirm_search(confirm_search)
 
             startup_id = '_TIME%u' % Gtk.get_current_event_time()
             install_ctx.set_startup_notification_id(startup_id)
@@ -322,13 +354,13 @@ class Player(GObject.GObject):
             uri = media.get_url()
         else:
             uri = 'none'
-        logger.warn('URI: ' + uri)
+        logger.warn('URI: %s', uri)
         error, debug = message.parse_error()
         debug = debug.split('\n')
         debug = [('     ') + line.lstrip() for line in debug]
         debug = '\n'.join(debug)
-        logger.warn('Error from element ' + message.src.get_name() + ': ' + error.message)
-        logger.warn('Debugging info:\n' + debug)
+        logger.warn('Error from element %s: %s', message.src.get_name(), error.message)
+        logger.warn('Debugging info:\n%s', debug)
         self.play_next()
         return True
 
@@ -372,7 +404,13 @@ class Player(GObject.GObject):
 
     @log
     def _get_random_iter(self, currentTrack):
-        if not currentTrack or not self.playlist.iter_is_valid(currentTrack):
+        first_iter = self.playlist.get_iter_first()
+        if not currentTrack:
+            currentTrack = first_iter
+        if not currentTrack:
+            return None
+        if hasattr(self.playlist, "iter_is_valid") and\
+           not self.playlist.iter_is_valid(currentTrack):
             return None
         currentPath = int(self.playlist.get_path(currentTrack).to_string())
         rows = self.playlist.iter_n_children(None)
@@ -406,8 +444,8 @@ class Player(GObject.GObject):
             if currentTrack:
                 nextTrack = self.playlist.iter_next(currentTrack)
         elif self.repeat == RepeatType.SHUFFLE:
+            nextTrack = self._get_random_iter(currentTrack)
             if currentTrack:
-                nextTrack = self._get_random_iter(currentTrack)
                 self.shuffleHistory.append(currentTrack)
 
         if nextTrack:
@@ -565,21 +603,23 @@ class Player(GObject.GObject):
             pass
         finally:
             self.artistLabel.set_label(artist)
+            self._currentArtist = artist
 
         album = _("Unknown Album")
         try:
             assert media.get_album() is not None
             album = media.get_album()
         except:
-            pass
+            self._currentAlbum = album
 
         self.coverImg.set_from_pixbuf(self._noArtworkIcon)
         self.cache.lookup(
             media, ART_SIZE, ART_SIZE, self._on_cache_lookup, None, artist, album)
 
-        title = AlbumArtCache.get_media_title(media)
+        self._currentTitle = AlbumArtCache.get_media_title(media)
+        self.titleLabel.set_label(self._currentTitle)
 
-        self.titleLabel.set_label(title)
+        self._currentTimestamp = int(time.time())
 
         url = media.get_url()
         if url != self.player.get_value('current-uri', 0):
@@ -594,7 +634,7 @@ class Player(GObject.GObject):
 
         # Send last.fm scrobble signal if boolean setting true and if duration more than 30s
         if (self._settings.get_boolean('lastfm-scrobble') and self.duration > 30):
-            self.emit('lastfm-scrobble', {'track': title, 'artist': artist, 'album': album})
+            self.emit('lastfm-scrobble', {'track': self._currentTitle, 'artist': artist, 'album': album})
 
     def _on_next_item_validated(self, info, error, _iter):
         if error:
@@ -605,14 +645,15 @@ class Player(GObject.GObject):
             if nextTrack:
                 self._validate_next_track(Gtk.TreeRowReference.new(self.playlist, self.playlist.get_path(nextTrack)))
 
+    @log
     def _validate_next_track(self, track=None):
         if track is None:
             track = self._get_next_track()
 
+        self.nextTrack = track
+
         if track is None:
             return
-
-        self.nextTrack = track
 
         _iter = self.playlist.get_iter(self.nextTrack.get_path())
         status = self.playlist.get_value(_iter, self.discovery_status_field)
@@ -640,6 +681,8 @@ class Player(GObject.GObject):
         if self.playlist is None:
             return
 
+        media = None
+
         if self.player.get_state(1)[1] != Gst.State.PAUSED:
             self.stop()
 
@@ -651,6 +694,10 @@ class Player(GObject.GObject):
 
         self.player.set_state(Gst.State.PLAYING)
         self._update_position_callback()
+        if media:
+            t = Thread(target=self.update_now_playing_in_lastfm, args=(media.get_url(),))
+            t.setDaemon(True)
+            t.start()
         if not self.timeout:
             self.timeout = GLib.timeout_add(1000, self._update_position_callback)
 
@@ -685,7 +732,8 @@ class Player(GObject.GObject):
             return True
 
         self.stop()
-        self.currentTrack = self.nextTrack
+        self.currentTrack = self._get_next_track()
+
         if self.currentTrack and self.currentTrack.valid():
             self.currentTrackUri = self.playlist.get_value(
                 self.playlist.get_iter(self.currentTrack.get_path()), 5).get_url()
@@ -811,7 +859,6 @@ class Player(GObject.GObject):
             self.timeout = None
         return False
 
-    @log
     def seconds_to_string(self, duration):
         seconds = duration
         minutes = seconds // 60
@@ -842,6 +889,65 @@ class Player(GObject.GObject):
         self.progressScale.set_range(0.0, duration * 60)
 
     @log
+    def scrobble_song(self, url):
+        # Update playlists
+        playlists.update_playcount(url)
+        playlists.update_last_played(url)
+        playlists.update_all_static_playlists()
+
+        if self.last_fm:
+            api_key = self.last_fm.props.client_id
+            sk = self.last_fm.call_get_access_token_sync(None)[0]
+            secret = self.last_fm.props.client_secret
+
+            sig = "api_key%sartist[0]%smethodtrack.scrobblesk%stimestamp[0]%strack[0]%s%s" %\
+                (api_key, self._currentArtist, sk, self._currentTimestamp, self._currentTitle, secret)
+
+            api_sig = md5(sig.encode()).hexdigest()
+            requests_dict = {
+                "api_key": api_key,
+                "method": "track.scrobble",
+                "artist[0]": self._currentArtist,
+                "track[0]": self._currentTitle,
+                "timestamp[0]": self._currentTimestamp,
+                "sk": sk,
+                "api_sig": api_sig
+            }
+            try:
+                r = requests.post("https://ws.audioscrobbler.com/2.0/", requests_dict)
+                if r.status_code != 200:
+                    logger.warn("Failed to scrobble track: %s %s" % (r.status_code, r.reason))
+                    logger.warn(r.text)
+            except Exception as e:
+                logger.warn(e)
+
+    @log
+    def update_now_playing_in_lastfm(self, url):
+        if self.last_fm:
+            api_key = self.last_fm.props.client_id
+            sk = self.last_fm.call_get_access_token_sync(None)[0]
+            secret = self.last_fm.props.client_secret
+
+            sig = "api_key%sartist%smethodtrack.updateNowPlayingsk%strack%s%s" % \
+                (api_key, self._currentArtist, sk, self._currentTitle, secret)
+
+            api_sig = md5(sig.encode()).hexdigest()
+            request_dict = {
+                "api_key": api_key,
+                "method": "track.updateNowPlaying",
+                "artist": self._currentArtist,
+                "track": self._currentTitle,
+                "sk": sk,
+                "api_sig": api_sig
+            }
+            try:
+                r = requests.post("https://ws.audioscrobbler.com/2.0/", request_dict)
+                if r.status_code != 200:
+                    logger.warn("Failed to update currently played track: %s %s" % (r.status_code, r.reason))
+                    logger.warn(r.text)
+            except Exception as e:
+                logger.warn(e)
+
     def _update_position_callback(self):
         position = self.player.query_position(Gst.Format.TIME)[1] / 1000000000
         if position > 0:
@@ -854,11 +960,11 @@ class Player(GObject.GObject):
                     self.scrobbled = True
                     if current_media:
                         just_played_url = self.get_current_media().get_url()
-                        playlists.update_playcount(just_played_url)
-                        playlists.update_last_played(just_played_url)
-                        playlists.update_all_static_playlists()
+                        t = Thread(target=self.scrobble_song, args=(just_played_url,))
+                        t.setDaemon(True)
+                        t.start()
             except Exception as e:
-                logger.warn("Error: %s, %s" % (e.__class__, e))
+                logger.warn("Error: %s, %s", e.__class__, e)
         return True
 
     @log
@@ -975,6 +1081,9 @@ class Player(GObject.GObject):
 
 class MissingCodecsDialog(Gtk.MessageDialog):
 
+    def __repr__(self):
+        return '<MissingCodecsDialog>'
+
     @log
     def __init__(self, parent_window, install_helper_name):
         Gtk.MessageDialog.__init__(self,
@@ -989,7 +1098,7 @@ class MissingCodecsDialog(Gtk.MessageDialog):
         # %s will be replaced with the software installer's name, e.g.
         # 'Software' in case of gnome-software.
         self.find_button = self.add_button(_("_Find in %s") % install_helper_name,
-                                            Gtk.ResponseType.ACCEPT)
+                                           Gtk.ResponseType.ACCEPT)
         self.set_default_response(Gtk.ResponseType.ACCEPT)
         Gtk.StyleContext.add_class(self.find_button.get_style_context(), 'suggested-action')
 
@@ -1006,7 +1115,11 @@ class MissingCodecsDialog(Gtk.MessageDialog):
                                             "%s are required to play the file, but are not installed.",
                                             n_codecs) % text)
 
+
 class SelectionToolbar():
+
+    def __repr__(self):
+        return '<SelectionToolbar>'
 
     @log
     def __init__(self):

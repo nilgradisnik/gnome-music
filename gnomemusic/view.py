@@ -34,8 +34,8 @@
 from gi.repository import Gtk
 from gi.repository import GObject
 from gi.repository import Gd
-from gi.repository import Grl
 from gi.repository import Gio
+from gi.repository import Grl
 from gi.repository import Pango
 from gi.repository import GLib
 from gi.repository import GdkPixbuf
@@ -59,6 +59,9 @@ class ViewContainer(Gtk.Stack):
     nowPlayingIconName = 'media-playback-start-symbolic'
     errorIconName = 'dialog-error-symbolic'
 
+    def __repr__(self):
+        return '<ViewContainer>'
+
     @log
     def __init__(self, name, title, window, view_type, use_sidebar=False, sidebar=None):
         Gtk.Stack.__init__(self,
@@ -81,7 +84,7 @@ class ViewContainer(Gtk.Stack):
             GObject.TYPE_BOOLEAN,
             GObject.TYPE_INT,
             GObject.TYPE_STRING,
-            GObject.TYPE_BOOLEAN,
+            GObject.TYPE_INT,
             GObject.TYPE_BOOLEAN,
             GObject.TYPE_INT
         )
@@ -90,8 +93,8 @@ class ViewContainer(Gtk.Stack):
         )
         self.view.set_view_type(view_type)
         self.view.set_model(self.model)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        box.pack_start(self.view, True, True, 0)
+        self._box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self._box.pack_start(self.view, True, True, 0)
         if use_sidebar:
             self.stack = Gtk.Stack(
                 transition_type=Gtk.StackTransitionType.SLIDE_RIGHT,
@@ -101,11 +104,11 @@ class ViewContainer(Gtk.Stack):
             if sidebar:
                 self.stack.add_named(sidebar, 'sidebar')
             else:
-                self.stack.add_named(box, 'sidebar')
+                self.stack.add_named(self._box, 'sidebar')
             self.stack.set_visible_child_name('dummy')
             self._grid.add(self.stack)
         if not use_sidebar or sidebar:
-            self._grid.add(box)
+            self._grid.add(self._box)
 
         self.star_handler = Widgets.StarHandler(self, 9)
         self.view.click_handler = self.view.connect('item-activated', self._on_item_activated)
@@ -132,12 +135,9 @@ class ViewContainer(Gtk.Stack):
 
         self._init = False
         grilo.connect('ready', self._on_grilo_ready)
-        self.header_bar.header_bar.connect('state-changed',
-                                           self._on_state_changed)
+        self.selection_socket = None
         self.header_bar.connect('selection-mode-changed',
                                 self._on_selection_mode_changed)
-        self.view.connect('view-selection-changed',
-                          self._on_view_selection_changed)
 
         self._discovering_urls = {}
         grilo.connect('changes-pending', self._on_changes_pending)
@@ -197,10 +197,6 @@ class ViewContainer(Gtk.Stack):
         self.populate()
 
     @log
-    def _on_state_changed(self, widget, data=None):
-        pass
-
-    @log
     def _on_selection_mode_changed(self, widget, data=None):
         pass
 
@@ -216,6 +212,14 @@ class ViewContainer(Gtk.Stack):
                 self.window.notification.dismiss()
                 self.view.show()
             return
+        # Make sure the item with this ID is not added
+        _iter = self.model.get_iter_first()
+        while _iter:
+            item_id = self.model.get_value(_iter, 0)
+            if str(item_id) == item.get_id():
+                return
+            _iter = self.model.iter_next(_iter)
+
         self._offset += 1
         artist = item.get_string(Grl.METADATA_KEY_ARTIST)\
             or item.get_author()\
@@ -262,18 +266,56 @@ class ViewContainer(Gtk.Stack):
 
 # Class for the Empty View
 class Empty(Gtk.Stack):
+
+    def __repr__(self):
+        return '<EmptyView>'
+
     @log
     def __init__(self, window, player):
         Gtk.Stack.__init__(self,
                            transition_type=Gtk.StackTransitionType.CROSSFADE)
-        builder = Gtk.Builder()
-        builder.add_from_resource('/org/gnome/Music/NoMusic.ui')
-        widget = builder.get_object('container')
+        self.builder = Gtk.Builder()
+        self.builder.add_from_resource('/org/gnome/Music/NoMusic.ui')
+        widget = self.builder.get_object('container')
+        self.update_empty_state_link()
         self.add(widget)
         self.show_all()
 
+    def update_empty_state_link(self):
+        label = self.builder.get_object('empty-state-label')
+        href_text = '<a href="%s">%s</a>' % (Query.MUSIC_URI, _("Music folder"))
+        label.set_label(label.get_label() % href_text)
+
+
+# Class for the Initial State
+class InitialState(Empty):
+
+    def __repr__(self):
+        return '<InitialState>'
+
+    @log
+    def __init__(self, window, player):
+        Empty.__init__(self, window, player)
+
+        # Update image
+        icon = self.builder.get_object('icon')
+        icon.set_margin_bottom(32)
+        icon.set_opacity(1)
+        icon.set_from_resource('/org/gnome/Music/initial-state.png')
+        icon.set_size_request(256, 256)
+
+        # Update label
+        label = self.builder.get_object('label')
+        label.set_label(_("Hey DJ"))
+        label.set_opacity(1)
+        label.set_margin_bottom(18)
+
 
 class Albums(ViewContainer):
+
+    def __repr__(self):
+        return '<Albums>'
+
     @log
     def __init__(self, window, player):
         ViewContainer.__init__(self, 'albums', _("Albums"), window, Gd.MainViewType.ICON)
@@ -290,8 +332,7 @@ class Albums(ViewContainer):
         if (self._init and self.header_bar._selectionMode is False):
             self._offset = 0
             self._init = True
-            self.model.clear()
-            self.populate()
+            GLib.idle_add(self.populate)
             grilo.changes_pending['Albums'] = False
 
     @log
@@ -366,6 +407,10 @@ class Albums(ViewContainer):
 
 
 class Songs(ViewContainer):
+
+    def __repr__(self):
+        return '<Songs>'
+
     @log
     def __init__(self, window, player):
         ViewContainer.__init__(self, 'songs', _("Songs"), window, Gd.MainViewType.LIST)
@@ -385,7 +430,7 @@ class Songs(ViewContainer):
         if (self._init and self.header_bar._selectionMode is False):
             self.model.clear()
             self._offset = 0
-            self.populate()
+            GLib.idle_add(self.populate)
             grilo.changes_pending['Songs'] = False
 
     @log
@@ -564,6 +609,10 @@ class Songs(ViewContainer):
 
 
 class Artists (ViewContainer):
+
+    def __repr__(self):
+        return '<Artists>'
+
     @log
     def __init__(self, window, player):
         ViewContainer.__init__(self, 'artists', _("Artists"),
@@ -583,19 +632,14 @@ class Artists (ViewContainer):
         )
         self.artistAlbumsStack.add_named(self._artistAlbumsWidget, "sidebar")
         self.artistAlbumsStack.set_visible_child_name("sidebar")
+        self.view.set_shadow_type(Gtk.ShadowType.IN)
+        self.view.get_style_context().add_class('side-panel')
         self.view.set_hexpand(False)
         self.view.get_generic_view().get_selection().set_mode(
             Gtk.SelectionMode.SINGLE)
         self._grid.attach(self.artistAlbumsStack, 2, 0, 2, 2)
         self._add_list_renderers()
         self.view.get_generic_view().get_style_context().remove_class('content-view')
-        if (Gtk.Settings.get_default().get_property(
-                'gtk_application_prefer_dark_theme')):
-            self.view.get_generic_view().get_style_context().\
-                add_class('artist-panel-dark')
-        else:
-            self.view.get_generic_view().get_style_context().\
-                add_class('artist-panel-white')
         self.show_all()
         self.view.hide()
 
@@ -605,25 +649,13 @@ class Artists (ViewContainer):
             self.model.clear()
             self._artists.clear()
             self._offset = 0
-            self._populate()
+            GLib.idle_add(self._populate)
             grilo.changes_pending['Artists'] = False
 
     @log
     def _populate(self, data=None):
-        selection = self.view.get_generic_view().get_selection()
-        if not selection.get_selected()[1]:
-            self._allIter = self.model.insert_with_valuesv(-1, [2], [_("All Artists")])
-            self._last_selection = self._allIter
-            self._artists[_("All Artists").casefold()] =\
-                {'iter': self._allIter, 'albums': [], 'widget': None}
-            #selection.select_path(self.model.get_path(self._allIter))
         self._init = True
         self.populate()
-
-    @log
-    def add_all_artists_entry(self):
-        self.view.emit('item-activated', '0',
-                       self.model.get_path(self._allIter))
 
     @log
     def _add_list_renderers(self):
@@ -678,16 +710,11 @@ class Artists (ViewContainer):
         self.artistAlbumsStack.add(new_artistAlbumsWidget)
 
         artistAlbums = None
-        if (self.model.get_string_from_iter(_iter) ==
-                self.model.get_string_from_iter(self._allIter)):
-            artistAlbums = Widgets.AllArtistsAlbums(
-                self.player, self.header_bar, self.selection_toolbar, self.window
-            )
-        else:
-            artistAlbums = Widgets.ArtistAlbums(
-                artist, albums, self.player,
-                self.header_bar, self.selection_toolbar, self.window
-            )
+
+        artistAlbums = Widgets.ArtistAlbums(
+            artist, albums, self.player,
+            self.header_bar, self.selection_toolbar, self.window
+        )
         self._artists[artist.casefold()]['widget'] = artistAlbums
         new_artistAlbumsWidget.add(artistAlbums)
         new_artistAlbumsWidget.show()
@@ -755,9 +782,7 @@ class Artists (ViewContainer):
             _iter = self.model.get_iter(path)
             artist = self.model.get_value(_iter, 2)
             albums = self._artists[artist.casefold()]['albums']
-            if (self.model.get_string_from_iter(_iter) !=
-                    self.model.get_string_from_iter(self._allIter)):
-                self.albums_selected.extend(albums)
+            self.albums_selected.extend(albums)
 
         if len(self.albums_selected):
             self._get_selected_album_songs()
@@ -782,15 +807,16 @@ class Artists (ViewContainer):
 
 class Playlist(ViewContainer):
     __gsignals__ = {
-        'playlists-loaded': (GObject.SIGNAL_RUN_FIRST, None, ()),
-        'playlist-songs-loaded': (GObject.SIGNAL_RUN_FIRST, None, ()),
+        'playlists-loaded': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'playlist-songs-loaded': (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
+
+    def __repr__(self):
+        return '<Playlist>'
 
     @log
     def __init__(self, window, player):
-        self.playlists_sidebar = Gd.MainView(
-            shadow_type=Gtk.ShadowType.NONE
-        )
+        self.playlists_sidebar = Gd.MainView()
 
         ViewContainer.__init__(self, 'playlists', _("Playlists"), window,
                                Gd.MainViewType.LIST, True, self.playlists_sidebar)
@@ -824,7 +850,7 @@ class Playlist(ViewContainer):
             GObject.TYPE_BOOLEAN,
             GObject.TYPE_INT,
             GObject.TYPE_STRING,
-            GObject.TYPE_BOOLEAN,
+            GObject.TYPE_INT,
             GObject.TYPE_BOOLEAN,
             GObject.TYPE_INT
         )
@@ -832,7 +858,7 @@ class Playlist(ViewContainer):
         self.playlists_sidebar.set_view_type(Gd.MainViewType.LIST)
         self.playlists_sidebar.set_model(self.playlists_model)
         self.playlists_sidebar.set_hexpand(False)
-        #self.playlists_sidebar.get_style_context().add_class('artist-panel')
+        self.playlists_sidebar.get_style_context().add_class('side-panel')
         self.playlists_sidebar.get_generic_view().get_selection().set_mode(
             Gtk.SelectionMode.SINGLE)
         self.playlists_sidebar.connect('item-activated', self._on_playlist_activated)
@@ -841,13 +867,6 @@ class Playlist(ViewContainer):
         self._grid.child_set_property(self.stack, 'height', 2)
         self._add_sidebar_renderers()
         self.playlists_sidebar.get_generic_view().get_style_context().remove_class('content-view')
-        if (Gtk.Settings.get_default().get_property(
-                'gtk_application_prefer_dark_theme')):
-            self.playlists_sidebar.get_generic_view().get_style_context().\
-                add_class("artist-panel-dark")
-        else:
-            self.playlists_sidebar.get_generic_view().get_style_context().\
-                add_class("artist-panel-white")
 
         self.iter_to_clean = None
         self.iter_to_clean_model = None
@@ -952,6 +971,9 @@ class Playlist(ViewContainer):
         pass
 
     def _on_list_widget_duration_render(self, col, cell, model, _iter, data):
+        if not model.iter_is_valid(_iter):
+            return
+
         item = model.get_value(_iter, 5)
         if item:
             seconds = item.get_duration()
@@ -963,6 +985,9 @@ class Playlist(ViewContainer):
         pass
 
     def _on_list_widget_type_render(self, coll, cell, model, _iter, data):
+        if not model.iter_is_valid(_iter):
+            return
+
         item = model.get_value(_iter, 5)
         if item:
             cell.set_property('text', item.get_string(Grl.METADATA_KEY_ALBUM) or _("Unknown Album"))
@@ -970,6 +995,9 @@ class Playlist(ViewContainer):
     def _on_list_widget_icon_render(self, col, cell, model, _iter, data):
         if not self.player.currentTrackUri:
             cell.set_visible(False)
+            return
+
+        if not model.iter_is_valid(_iter):
             return
 
         if model.get_value(_iter, 11) == DiscoveryStatus.FAILED:
@@ -1050,7 +1078,7 @@ class Playlist(ViewContainer):
             playlist = self.playlists_model.get_value(_iter, 5)
             if str(playlist_id) == playlist.get_id() and self.current_playlist == playlist:
                 path = self.playlists_model.get_path(_iter)
-                self._on_playlist_activated(None, None, path)
+                GLib.idle_add(self._on_playlist_activated, None, None, path)
                 break
             _iter = self.playlists_model.iter_next(_iter)
 
@@ -1108,24 +1136,10 @@ class Playlist(ViewContainer):
 
         # if the active queue has been set by this playlist,
         # use it as model, otherwise build the liststore
-        self.model = Gtk.ListStore(
-            GObject.TYPE_STRING,
-            GObject.TYPE_STRING,
-            GObject.TYPE_STRING,
-            GObject.TYPE_STRING,
-            GdkPixbuf.Pixbuf,
-            GObject.TYPE_OBJECT,
-            GObject.TYPE_BOOLEAN,
-            GObject.TYPE_INT,
-            GObject.TYPE_STRING,
-            GObject.TYPE_BOOLEAN,
-            GObject.TYPE_BOOLEAN,
-            GObject.TYPE_INT
-        )
-        self.view.set_model(self.model)
-        GLib.idle_add(grilo.populate_playlist_songs, playlist, self._add_item)
+        self.model = self.view.get_model()
+        self.model.clear()
         self.songs_count = 0
-        self._update_songs_count()
+        GLib.idle_add(grilo.populate_playlist_songs, playlist, self._add_item)
 
         # disable delete button if current playlist is a smart playlist
         if self.current_playlist_is_protected():
@@ -1140,6 +1154,9 @@ class Playlist(ViewContainer):
     @log
     def _add_item_to_model(self, item, model):
         if not item:
+            self._update_songs_count()
+            if self.player.playlist:
+                self.player._validate_next_track()
             self.emit('playlist-songs-loaded')
             return
         self._offset += 1
@@ -1153,7 +1170,6 @@ class Playlist(ViewContainer):
             [2, 3, 5, 9],
             [title, artist, item, bool(item.get_lyrics())])
         self.songs_count += 1
-        self._update_songs_count()
 
     @log
     def _update_songs_count(self):
@@ -1283,7 +1299,43 @@ class Playlist(ViewContainer):
                   for path in self.view.get_selection()])
 
 
+class EmptySearch(ViewContainer):
+
+    def __repr__(self):
+        return '<EmptySearch>'
+
+    @log
+    def __init__(self, window, player):
+        ViewContainer.__init__(self, 'emptysearch', None, window, Gd.MainViewType.LIST)
+        self._artistAlbumsWidget = None
+        self.player = player
+
+        builder = Gtk.Builder()
+        builder.add_from_resource('/org/gnome/Music/NoMusic.ui')
+        widget = builder.get_object('container')
+        widget.set_vexpand(True)
+        widget.set_hexpand(True)
+        widget.get_children()[1].get_children()[1].set_text(_("Try a different search"))
+        widget.show_all()
+        self._box.add(widget)
+
+    @log
+    def _back_button_clicked(self, widget, data=None):
+        self.header_bar.searchbar.show_bar(True, False)
+        if self.get_visible_child() == self._artistAlbumsWidget:
+            self._artistAlbumsWidget.destroy()
+            self._artistAlbumsWidget = None
+        self.set_visible_child(self._grid)
+
+
 class Search(ViewContainer):
+    __gsignals__ = {
+        'no-music-found': (GObject.SignalFlags.RUN_FIRST, None, ())
+    }
+
+    def __repr__(self):
+        return '<Search>'
+
     @log
     def __init__(self, window, player):
         ViewContainer.__init__(self, 'search', None, window, Gd.MainViewType.LIST)
@@ -1300,6 +1352,8 @@ class Search(ViewContainer):
         self.player = player
         self.head_iters = [None, None, None, None]
         self.songs_model = self.model
+        self.previous_view = None
+        self.connect('no-music-found', self._no_music_found_callback)
 
         self.albums_selected = []
         self._albums = {}
@@ -1313,6 +1367,14 @@ class Search(ViewContainer):
         self.view.get_generic_view().set_show_expanders(False)
         self.items_selected = []
         self.items_selected_callback = None
+
+        self.found_items_number = None
+
+    @log
+    def _no_music_found_callback(self, view):
+        self.window._stack.set_visible_child_name('emptysearch')
+        emptysearch = self.window._stack.get_child_by_name('emptysearch')
+        emptysearch._artistAlbumsWidget = self._artistAlbumsWidget
 
     @log
     def _back_button_clicked(self, widget, data=None):
@@ -1354,6 +1416,7 @@ class Search(ViewContainer):
                 self.header_bar, self.selection_toolbar, self.window, True
             )
             self.add(self._artistAlbumsWidget)
+            self._artistAlbumsWidget.show()
 
             self.header_bar.set_state(ToolbarState.SEARCH_VIEW)
             self.header_bar.header_bar.set_title(artist)
@@ -1377,7 +1440,12 @@ class Search(ViewContainer):
 
     @log
     def _add_search_item(self, source, param, item, remaining=0, data=None):
-        if not item or data != self.model:
+        if not item:
+            if grilo._search_callback_counter == 0 and grilo.search_source:
+                self.emit('no-music-found')
+            return
+
+        if data != self.model:
             return
 
         artist = item.get_string(Grl.METADATA_KEY_ARTIST) \
@@ -1405,11 +1473,27 @@ class Search(ViewContainer):
         if data is None:
             return
 
+        model, category = data
+
+        self.found_items_number = (
+            self.model.iter_n_children(self.head_iters[0]) +
+            self.model.iter_n_children(self.head_iters[1]) +
+            self.model.iter_n_children(self.head_iters[2]) +
+            self.model.iter_n_children(self.head_iters[3]))
+
+        if category == 'song' and self.found_items_number == 0 and remaining == 0:
+            if grilo.search_source:
+                self.emit('no-music-found')
+
+        # We need to remember the view before the search view
+        if self.window.curr_view != self.window.views[5] and \
+           self.window.prev_view != self.window.views[5]:
+            self.previous_view = self.window.prev_view
+
         if remaining == 0:
             self.window.notification.dismiss()
             self.view.show()
 
-        model, category = data
         if not item or model != self.model:
             return
 
@@ -1432,7 +1516,7 @@ class Search(ViewContainer):
                 self.head_iters[group], -1,
                 [0, 2, 3, 4, 5, 9, 11],
                 [str(item.get_id()), title, artist,
-                 self._loadingIcon, item, False, category])
+                 self._loadingIcon, item, 2, category])
             self.cache.lookup(item, self._iconWidth, self._iconHeight, self._on_lookup_ready,
                               _iter, artist, title)
         elif category == 'song':
@@ -1440,14 +1524,14 @@ class Search(ViewContainer):
                 self.head_iters[group], -1,
                 [0, 2, 3, 4, 5, 9, 11],
                 [str(item.get_id()), title, artist,
-                 self._noAlbumArtIcon, item, bool(item.get_lyrics()), category])
+                 self._noAlbumArtIcon, item, 2 if source.get_id() != 'grl-tracker-source' else bool(item.get_lyrics()), category])
         else:
             if not artist.casefold() in self._artists:
                 _iter = self.model.insert_with_values(
                     self.head_iters[group], -1,
                     [0, 2, 4, 5, 9, 11],
                     [str(item.get_id()), artist,
-                     self._loadingIcon, item, False, category])
+                     self._loadingIcon, item, 2, category])
                 self.cache.lookup(item, self._iconWidth, self._iconHeight, self._on_lookup_ready,
                                   _iter, artist, title)
                 self._artists[artist.casefold()] = {'iter': _iter, 'albums': []}
@@ -1475,7 +1559,7 @@ class Search(ViewContainer):
                                  self._on_list_widget_title_render, None)
         cols[0].add_attribute(title_renderer, 'text', 2)
 
-        self.star_handler._add_star_renderers(list_widget, cols, hidden=True)
+        self.star_handler._add_star_renderers(list_widget, cols, hidden=False)
 
         cells = cols[0].get_cells()
         cols[0].reorder(cells[0], -1)
@@ -1627,7 +1711,7 @@ class Search(ViewContainer):
             GObject.TYPE_BOOLEAN,
             GObject.TYPE_INT,
             GObject.TYPE_STRING,
-            GObject.TYPE_BOOLEAN,
+            GObject.TYPE_INT,
             GObject.TYPE_BOOLEAN,
             GObject.TYPE_STRING,    # type
             GObject.TYPE_INT
@@ -1642,10 +1726,10 @@ class Search(ViewContainer):
         if search_term == "":
             return
 
-        albums_iter = self.model.insert_with_values(None, -1, [2], [_("Albums")])
-        artists_iter = self.model.insert_with_values(None, -1, [2], [_("Artists")])
-        songs_iter = self.model.insert_with_values(None, -1, [2], [_("Songs")])
-        playlists_iter = self.model.insert_with_values(None, -1, [2], [_("Playlists")])
+        albums_iter = self.model.insert_with_values(None, -1, [2, 9], [_("Albums"), 2])
+        artists_iter = self.model.insert_with_values(None, -1, [2, 9], [_("Artists"), 2])
+        songs_iter = self.model.insert_with_values(None, -1, [2, 9], [_("Songs"), 2])
+        playlists_iter = self.model.insert_with_values(None, -1, [2, 9], [_("Playlists"), 2])
 
         self.head_iters = [albums_iter, artists_iter, songs_iter, playlists_iter]
         self.songs_model = self.model.filter_new(self.model.get_path(songs_iter))

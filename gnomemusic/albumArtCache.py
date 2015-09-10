@@ -27,8 +27,9 @@
 # code, but you are not obligated to do so.  If you do not wish to do so,
 # delete this exception statement from your version.
 
-
-from gi.repository import Gtk, GdkPixbuf, Gio, GLib, Gdk, MediaArt
+import gi
+gi.require_version('MediaArt', '2.0')
+from gi.repository import Gtk, GdkPixbuf, Gio, GLib, Gdk, MediaArt, GObject
 from gettext import gettext as _
 import cairo
 from math import pi
@@ -37,10 +38,10 @@ from threading import Thread, Lock
 from gnomemusic import log
 from gnomemusic.grilo import grilo
 import logging
-from queue import Queue
+import urllib.request
 logger = logging.getLogger(__name__)
 
-WORKER_THREADS = 2
+THREAD_QUEUE = []
 
 
 @log
@@ -78,11 +79,22 @@ def _make_icon_frame(pixbuf, path=None):
     return border_pixbuf
 
 
-class AlbumArtCache:
+class AlbumArtCache(GObject.GObject):
     instance = None
     blacklist = {}
     itr_queue = []
     threading_lock = Lock()
+    default_icons_cache = {}
+
+    default_icon_width = 256
+    default_icon_height = 256
+
+    def __repr__(self):
+        return '<AlbumArt>'
+
+    __gsignals__ = {
+        'thread-added': (GObject.SignalFlags.RUN_FIRST, None, (int,)),
+    }
 
     @classmethod
     def get_default(self):
@@ -115,37 +127,33 @@ class AlbumArtCache:
 
         return title
 
-    def worker(self, id):
-        while True:
-            try:
-                item = self.thread_queue.get()
-                item.setDaemon(True)
-                item.start()
-                item.join(30)
-                self.thread_queue.task_done()
-            except Exception as e:
-                logger.warn("worker %d item %s: error %s" % (id, item, str(e)))
+    def worker(self, object, id):
+        try:
+            item = THREAD_QUEUE[id]
+            item.setDaemon(True)
+            item.start()
+            item.join(30)
+        except Exception as e:
+            logger.warn("worker item %s: error %s", item, str(e))
 
     @log
     def __init__(self):
+        GObject.GObject.__init__(self)
         try:
             self.cacheDir = os.path.join(GLib.get_user_cache_dir(), 'media-art')
             if not os.path.exists(self.cacheDir):
                 Gio.file_new_for_path(self.cacheDir).make_directory(None)
         except Exception as e:
-            logger.warn("Error: %s" % e)
+            logger.warn("Error: %s", e)
 
-        try:
-            self.thread_queue = Queue()
-            for i in range(WORKER_THREADS):
-                t = Thread(target=self.worker, args=(i,))
-                t.setDaemon(True)
-                t.start()
-        except Exception as e:
-            logger.warn("Error: %s" % e)
+        # Prepare default icons
+        self.make_default_icon(is_loading=False)
+        self.make_default_icon(is_loading=True)
+        self.connect('thread-added', self.worker)
 
-    @log
-    def get_default_icon(self, width, height, is_loading=False):
+    def make_default_icon(self, is_loading=False):
+        width = self.default_icon_width
+        height = self.default_icon_height
         # get a small pixbuf with the given path
         icon_name = 'folder-music-symbolic'
         if is_loading:
@@ -168,7 +176,32 @@ class AlbumArtCache:
                        icon.get_height() * 3 / 2,
                        1, 1,
                        GdkPixbuf.InterpType.NEAREST, 0x33)
-        return _make_icon_frame(result)
+        final_icon = _make_icon_frame(result)
+        if width not in self.default_icons_cache:
+            self.default_icons_cache[width] = {}
+        if height not in self.default_icons_cache[width]:
+            self.default_icons_cache[width][height] = {}
+        self.default_icons_cache[width][height][is_loading] = final_icon
+
+    @log
+    def get_default_icon(self, width, height, is_loading=False):
+        # Try to fetch the icon from cache
+        try:
+            return self.default_icons_cache[width][height][is_loading]
+        except:
+            pass
+
+        # Scale the image down
+        orig_icon = self.default_icons_cache[self.default_icon_width][self.default_icon_height][is_loading].copy()
+        final_icon = orig_icon.scale_simple(width, height, GdkPixbuf.InterpType.BILINEAR)
+
+        # Create a cache reference
+        if width not in self.default_icons_cache:
+            self.default_icons_cache[width] = {}
+        if height not in self.default_icons_cache[width]:
+            self.default_icons_cache[width][height] = {}
+        self.default_icons_cache[width][height][is_loading] = final_icon
+        return final_icon
 
     @log
     def lookup(self, item, width, height, callback, itr, artist, album):
@@ -185,9 +218,10 @@ class AlbumArtCache:
                     self.itr_queue.append(itr.user_data)
 
             t = Thread(target=self.lookup_worker, args=(item, width, height, callback, itr, artist, album))
-            self.thread_queue.put(t)
+            THREAD_QUEUE.append(t)
+            self.emit('thread-added', len(THREAD_QUEUE) - 1)
         except Exception as e:
-            logger.warn("Error: %s, %s" % (e.__class__, e))
+            logger.warn("Error: %s, %s", e.__class__, e)
 
     @log
     def lookup_worker(self, item, width, height, callback, itr, artist, album):
@@ -212,7 +246,7 @@ class AlbumArtCache:
             pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, width, height, True)
             self.finish(item, _make_icon_frame(pixbuf), path, callback, itr, width, height)
         except Exception as e:
-            logger.warn("Error: %s" % e)
+            logger.warn("Error: %s", e)
 
     @log
     def finish(self, item, pixbuf, path, callback, itr, width=-1, height=-1, artist=None, album=None):
@@ -230,7 +264,7 @@ class AlbumArtCache:
                 item.set_thumbnail(GLib.filename_to_uri(path, None))
             GLib.idle_add(callback, pixbuf, path, itr)
         except Exception as e:
-            logger.warn("Error: %s" % e)
+            logger.warn("Error: %s", e)
 
     @log
     def cached_thumb_not_found(self, item, width, height, path, callback, itr, artist, album):
@@ -242,9 +276,10 @@ class AlbumArtCache:
                 return
 
             t = Thread(target=self.download_worker, args=(item, width, height, path, callback, itr, artist, album, uri))
-            self.thread_queue.put(t)
+            THREAD_QUEUE.append(t)
+            self.emit('thread-added', len(THREAD_QUEUE) - 1)
         except Exception as e:
-            logger.warn("Error: %s" % e)
+            logger.warn("Error: %s", e)
             self.finish(item, None, None, callback, itr, width, height, artist, album)
 
     @log
@@ -256,14 +291,15 @@ class AlbumArtCache:
 
             uri = item.get_thumbnail()
             if uri is None:
-                logger.warn("can't find artwork for album '%s' by %s" % (album, artist))
+                logger.warn("can't find artwork for album '%s' by %s", album, artist)
                 self.finish(item, None, None, callback, itr, width, height, artist, album)
                 return
 
             t = Thread(target=self.download_worker, args=(item, width, height, path, callback, itr, artist, album, uri))
-            self.thread_queue.put(t)
+            THREAD_QUEUE.append(t)
+            self.emit('thread-added', len(THREAD_QUEUE) - 1)
         except Exception as e:
-            logger.warn("Error: %s" % e)
+            logger.warn("Error: %s", e)
             self.finish(item, None, None, callback, itr, width, height, artist, album)
 
     @log
@@ -271,8 +307,13 @@ class AlbumArtCache:
         try:
             src = Gio.File.new_for_uri(uri)
             dest = Gio.File.new_for_path(path)
-            src.copy(dest, Gio.FileCopyFlags.OVERWRITE)
+            try:
+                # First lets use GLib
+                src.copy(dest, Gio.FileCopyFlags.OVERWRITE)
+            except Exception as e:
+                # Try the native python way
+                urllib.request.urlretrieve(uri, path)
             self.lookup_worker(item, width, height, callback, itr, artist, album)
         except Exception as e:
-            logger.warn("Error: %s" % e)
+            logger.warn("Error: %s", e)
             self.finish(item, None, None, callback, itr, width, height, artist, album)

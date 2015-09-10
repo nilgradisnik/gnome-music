@@ -51,12 +51,16 @@ try:
     MAX_TITLE_WIDTH = settings.get_int('max-width-chars')
 except Exception as e:
     MAX_TITLE_WIDTH = 20
-    logger.error("Error on setting widget max-width-chars: %s" % str(e))
+    logger.error("Error on setting widget max-width-chars: %s", str(e))
 
 playlists = Playlists.get_default()
 
 
 class StarHandler():
+
+    def __repr__(self):
+        return '<StarHandler>'
+
     @log
     def __init__(self, parent, star_index):
         self.star_index = star_index
@@ -78,6 +82,12 @@ class StarHandler():
         except TypeError:
             return
 
+        try:
+            if self.parent.model.get_value(_iter, 9) == 2:
+                return
+        except AttributeError:
+            return
+
         new_value = not self.parent.model.get_value(_iter, self.star_index)
         self.parent.model.set_value(_iter, self.star_index, new_value)
         song_item = self.parent.model.get_value(_iter, 5)
@@ -94,6 +104,9 @@ class AlbumWidget(Gtk.EventBox):
     duration = 0
     loadingIcon = ALBUM_ART_CACHE.get_default_icon(256, 256, True)
     noArtworkIcon = ALBUM_ART_CACHE.get_default_icon(256, 256, False)
+
+    def __repr__(self):
+        return '<AlbumWidget>'
 
     @log
     def __init__(self, player, parentview):
@@ -220,7 +233,7 @@ class AlbumWidget(Gtk.EventBox):
             GObject.TYPE_BOOLEAN,  # item selected
             GObject.TYPE_STRING,
             GObject.TYPE_BOOLEAN,
-            GObject.TYPE_BOOLEAN,  # icon shown
+            GObject.TYPE_INT,  # icon shown
             GObject.TYPE_BOOLEAN,
             GObject.TYPE_INT
         )
@@ -361,6 +374,9 @@ class AlbumWidget(Gtk.EventBox):
 
 class ArtistAlbums(Gtk.Box):
 
+    def __repr__(self):
+        return '<ArtistAlbums>'
+
     @log
     def __init__(self, artist, albums, player,
                  header_bar, selection_toolbar, window, selectionModeAllowed=False):
@@ -388,7 +404,7 @@ class ArtistAlbums(Gtk.Box):
                                    GObject.TYPE_BOOLEAN,
                                    GObject.TYPE_INT
                                    )
-        self.model.connect('row-changed', self._model_row_changed)
+        self.row_changed_source_id = None
 
         self._hbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self._albumBox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
@@ -490,6 +506,13 @@ class ArtistAlbums(Gtk.Box):
         if self.selectionMode == selectionMode:
             return
         self.selectionMode = selectionMode
+        try:
+            if self.row_changed_source_id:
+                self.model.disconnect(self.row_changed_source_id)
+            self.row_changed_source_id = self.model.connect('row-changed', self._model_row_changed)
+        except Exception as e:
+            logger.warning("Exception while tracking row-changed: %s", e)
+
         for widget in self.widgets:
             widget.set_selection_mode(selectionMode)
 
@@ -511,6 +534,9 @@ class ArtistAlbums(Gtk.Box):
 
 
 class AllArtistsAlbums(ArtistAlbums):
+
+    def __repr__(self):
+        return '<AllArtistsAlbums>'
 
     @log
     def __init__(self, player, header_bar, selection_toolbar, selectionModeAllowed=False):
@@ -538,11 +564,14 @@ class AllArtistsAlbums(ArtistAlbums):
 class ArtistAlbumWidget(Gtk.Box):
 
     __gsignals__ = {
-        'tracks-loaded': (GObject.SIGNAL_RUN_FIRST, None, ()),
+        'tracks-loaded': (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
     loadingIcon = AlbumArtCache.get_default().get_default_icon(128, 128, True)
     noArtworkIcon = ALBUM_ART_CACHE.get_default_icon(128, 128, False)
+
+    def __repr__(self):
+        return '<ArtistAlbumWidget>'
 
     @log
     def __init__(self, artist, album, player, model, header_bar, selectionModeAllowed):
@@ -697,6 +726,10 @@ class ArtistAlbumWidget(Gtk.Box):
 
 
 class PlaylistDialog():
+
+    def __repr__(self):
+        return '<PlaylistDialog>'
+
     @log
     def __init__(self, parent):
         self.ui = Gtk.Builder()
@@ -818,25 +851,28 @@ class PlaylistDialog():
 
 class CellRendererClickablePixbuf(Gtk.CellRendererPixbuf):
 
-    __gsignals__ = {'clicked': (GObject.SIGNAL_RUN_LAST, GObject.TYPE_NONE,
+    __gsignals__ = {'clicked': (GObject.SignalFlags.RUN_LAST, GObject.TYPE_NONE,
                                 (GObject.TYPE_STRING,))}
     __gproperties__ = {
-        'show_star': (GObject.TYPE_BOOLEAN, 'Show star', 'show star', False, GObject.PARAM_READWRITE)}
+        'show_star': (GObject.TYPE_INT, 'Show star', 'show star',0 ,2 ,1 , GObject.PARAM_READWRITE)}
 
     starIcon = 'starred-symbolic'
     nonStarIcon = 'non-starred-symbolic'
+
+    def __repr__(self):
+        return '<CellRendererClickablePixbuf>'
 
     def __init__(self, view, hidden=False, *args, **kwargs):
         Gtk.CellRendererPixbuf.__init__(self, *args, **kwargs)
         self.set_property('mode', Gtk.CellRendererMode.ACTIVATABLE)
         self.set_property('xpad', 32)
-        self.set_property('icon_name', self.nonStarIcon)
+        self.set_property('icon_name', '')
         self.view = view
         self.hidden = hidden
-        self.show_star = False
+        self.show_star = 0
 
     def do_activate(self, event, widget, path, background_area, cell_area, flags):
-        self.show_star = False
+        self.show_star = 0
         self.emit('clicked', path)
 
     def do_get_property(self, property):
@@ -845,11 +881,10 @@ class CellRendererClickablePixbuf(Gtk.CellRendererPixbuf):
 
     def do_set_property(self, property, value):
         if property.name == 'show-star':
-            if self.show_star:
+            if self.show_star == 1:
                 self.set_property('icon_name', self.starIcon)
+            elif self.show_star == 0:
+	            self.set_property('icon_name', self.nonStarIcon)
             else:
-                if not self.hidden:
-                    self.set_property('icon_name', self.nonStarIcon)
-                else:
-                    self.set_property('icon_name', '')
+                self.set_property('icon_name', '')
             self.show_star = value
